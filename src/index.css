@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  :root {
+    --background: 240 20% 4%; /* #0a0a0f */
+    --foreground: 210 40% 96%;
+
+    --card: 240 20% 4%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 240 20% 4%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 148 64% 51%; /* #35D07F - Celo Green */
+    --primary-foreground: 0 0% 0%;
+
+    --secondary: 152 76% 39%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 215 25% 17%;
+    --muted-foreground: 215 16% 65%;
+
+    --accent: 217 33% 15%;
+    --accent-foreground: 210 40% 96%;
+
+    --destructive: 0 84% 60%; /* #ef4444 */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 25% 15%;
+    --input: 215 25% 15%;
+    --ring: 148 64% 51%;
+
+    --radius: 0.75rem;
+
+    /* Semantic colors */
+    --success: 142 71% 45%; /* #22c55e */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
+    /* Tier colors */
+    --bronze: 30 60% 50%;
+    --silver: 0 0% 75%;
+    --gold: 51 100% 50%;
+
+    /* Surface colors */
+    --surface: 240 20% 7%;
+    --surface-hover: 240 20% 11%;
+
+    /* Gradient */
+    --gradient-start: 148 64% 51%;
+    --gradient-end: 152 76% 39%;
+
+    --sidebar-background: 240 20% 4%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 148 64% 51%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 217 33% 15%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 215 25% 15%;
+    --sidebar-ring: 148 64% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer utilities {
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)));
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3), 0 0 60px hsl(var(--primary) / 0.1);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 20px hsl(var(--success) / 0.3);
+  }
+
+  .glow-gold {
+    box-shadow: 0 0 20px hsl(var(--gold) / 0.3);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .glass-card {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
