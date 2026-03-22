@@ -1,239 +1,114 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { useStore } from '@/store/useStore';
-import { PredictionCard } from '@/components/PredictionCard';
-import { PredictionDetailModal } from '@/components/PredictionDetailModal';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ArrowRight, Shield, Brain, Gem, ChevronRight, ExternalLink, Cpu } from 'lucide-react';
-import { Prediction } from '@/types';
-import { AGENT_WALLET_ADDRESS, PREDICTION_CONTRACT_ADDRESS } from '@/config/contracts';
-import { CELOSCAN_URL } from '@/data/mockData';
+import { useStore } from '@/store/useStore';
+import { Target, BarChart3, Database, ShieldCheck, ArrowRight, Wallet } from 'lucide-react';
+import { ConnectButton, useActiveAccount } from 'thirdweb/react';
+import { thirdwebClient, celoChain } from '@/config/thirdweb';
 
-const trustIndicators = [
-  {
-    icon: <Shield size={32} />,
-    title: 'Immutable Proof',
-    desc: 'Every prediction recorded on Celo blockchain before kickoff. No editing, no deleting, no hiding.',
-  },
-  {
-    icon: <Brain size={32} />,
-    title: 'Multi-Factor Model',
-    desc: '6-factor AI model analyzing form, H2H, injuries, league position, rest days, and home advantage.',
-  },
-  {
-    icon: <Gem size={32} />,
-    title: 'Autonomous Agent',
-    desc: 'Fully autonomous AI agent with on-chain identity, verifiable predictions, and transparent track record.',
-  },
-];
 
 export default function LandingPage() {
-  const { fetchPredictions, fetchStats, historicalPredictions, stats } = useStore();
-  const [selectedPred, setSelectedPred] = useState<Prediction | null>(null);
-
-  useEffect(() => {
-    fetchPredictions();
-    fetchStats();
-  }, [fetchPredictions, fetchStats]);
-
-  const recentWins = historicalPredictions
-    .filter(p => p.result?.status === 'win')
-    .slice(0, 3);
+  const { stats } = useStore();
+  const account = useActiveAccount();
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col min-h-screen">
+      
       {/* Hero Section */}
-      <section className="relative py-20 md:py-32 overflow-hidden">
-        <div className="absolute inset-0 bg-background" />
+      <section className="relative px-4 py-24 md:py-32 flex flex-col items-center justify-center text-center overflow-hidden">
+        {/* Animated Pitch Lines (CSS Only background) */}
+        <div className="absolute inset-0 pointer-events-none opacity-20">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] border border-white/20 rounded-full" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1px] bg-white/20" />
+          <div className="absolute top-1/2 left-0 -translate-y-1/2 w-[150px] h-[300px] border border-white/20 border-l-0" />
+          <div className="absolute top-1/2 right-0 -translate-y-1/2 w-[150px] h-[300px] border border-white/20 border-r-0" />
+        </div>
         
-        {/* Particle background effect */}
-        <div className="absolute inset-0 overflow-hidden opacity-30">
-          {[...Array(20)].map((_, i) => (
-            <motion.div
-              key={i}
-              className="absolute w-1 h-1 bg-primary rounded-full"
-              initial={{
-                x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1000),
-                y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1000),
-                scale: Math.random() * 0.5 + 0.5,
-              }}
-              animate={{
-                y: [null, Math.random() * -500],
-                opacity: [0, 1, 0],
-              }}
-              transition={{
-                duration: Math.random() * 10 + 10,
-                repeat: Infinity,
-                ease: "linear"
-              }}
-            />
-          ))}
-        </div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(53,208,127,0.05)_0%,transparent_60%)] pointer-events-none" />
 
-        <div className="absolute top-20 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[100px]" />
-        <div className="absolute bottom-10 right-1/4 w-64 h-64 bg-success/10 rounded-full blur-[100px]" />
-
-        <div className="container mx-auto px-4 text-center relative">
-          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-            {/* Celo Badge */}
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <Badge className="bg-success/10 text-success border border-success/30 px-3 py-1.5 text-xs font-medium">
-                ⚡ Powered by Celo
-              </Badge>
-              <Badge className="bg-primary/10 text-primary border border-primary/30 px-3 py-1.5 text-xs font-medium">
-                <Cpu size={12} className="mr-1" /> AI Agent
-              </Badge>
-            </div>
-
-            <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-4 leading-tight">
-              AI-Powered Football<br />
-              <span className="gradient-text">Predictions on Celo</span>
+        <div className="relative z-10 max-w-4xl mx-auto space-y-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-foreground mb-6 text-balance">
+              The Only Football Predictions <br className="hidden md:block" />
+              <span className="gradient-text glow">Verified On-Chain</span>
             </h1>
-            <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Autonomous AI agent making verifiable football predictions on-chain. Transparent, proven, and running on Celo.
+            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed text-balance">
+              Our AI analyzes form, H2H, injuries, and table position. We only surface picks with &gt;8% edge over the market.
             </p>
+          </motion.div>
 
-            {/* Live Stats */}
-            <div className="inline-flex flex-wrap justify-center gap-6 px-6 py-4 rounded-2xl bg-card/80 border border-border backdrop-blur-sm mb-8">
-              <div>
-                <p className="text-3xl md:text-4xl font-bold gradient-text">{stats.winRate}%</p>
-                <p className="text-xs text-muted-foreground">Win Rate</p>
-              </div>
-              <div className="w-px bg-border" />
-              <div>
-                <p className="text-3xl md:text-4xl font-bold text-foreground">{stats.totalPredictions}</p>
-                <p className="text-xs text-muted-foreground">Verified Predictions</p>
-              </div>
-              <div className="w-px bg-border" />
-              <div>
-                <p className="text-3xl md:text-4xl font-bold text-foreground">5</p>
-                <p className="text-xs text-muted-foreground">Active Leagues</p>
-              </div>
+          {/* Stat Counters */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
+            className="flex flex-wrap items-center justify-center gap-4 md:gap-8 pt-4"
+          >
+            <div className="glass-card px-6 py-4 rounded-2xl border-white/10 flex flex-col items-center min-w[140px]">
+              <span className="text-3xl font-bold font-mono text-primary">{stats.winRate}%</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider mt-1 flex items-center gap-1"><Target size={12}/> Win Rate</span>
+            </div>
+            <div className="glass-card px-6 py-4 rounded-2xl border-white/10 flex flex-col items-center min-w[140px]">
+               <span className="text-3xl font-bold font-mono text-foreground">{stats.totalPredictions}</span>
+               <span className="text-xs text-muted-foreground uppercase tracking-wider mt-1 flex items-center gap-1"><Database size={12}/> Predictions</span>
+            </div>
+            <div className="glass-card px-6 py-4 rounded-2xl border-primary/20 bg-primary/5 flex flex-col items-center min-w[140px]">
+               <span className="text-3xl font-bold font-mono text-success">100%</span>
+               <span className="text-xs text-success uppercase tracking-wider mt-1 flex items-center gap-1"><ShieldCheck size={12}/> Recorded on Celo</span>
             </div>
           </motion.div>
 
-          <motion.div
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+          {/* CTAs */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6"
           >
-            <Button asChild size="lg" className="gradient-primary text-primary-foreground glow-primary px-8">
+            {!account?.address ? (
+              <ConnectButton 
+                client={thirdwebClient} 
+                chain={celoChain}
+                connectButton={{
+                  className: "w-full sm:w-auto text-base h-14 px-8 gradient-primary text-primary-foreground font-bold shadow-lg shadow-primary/20",
+                  label: "Connect Wallet"
+                }}
+              />
+
+            ) : (
               <Link to="/dashboard">
-                View Today's Picks
-                <ArrowRight size={16} className="ml-2" />
+                <Button className="gradient-primary text-primary-foreground font-bold px-8 py-6 text-lg">
+                  View Today's Picks <ArrowRight className="ml-2" size={18} />
+                </Button>
               </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg" className="border-border">
-              <Link to="/track-record">Track Record</Link>
-            </Button>
-          </motion.div>
-
-          {/* On-Chain Links */}
-          <motion.div
-            className="flex flex-wrap items-center justify-center gap-3 text-xs"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-          >
-            <a
-              href={`${CELOSCAN_URL}/address/${PREDICTION_CONTRACT_ADDRESS}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card/60 border border-border text-muted-foreground hover:text-primary hover:border-primary/30 transition-colors"
-            >
-              <Cpu size={12} />
-              Prediction Contract
-              <ExternalLink size={10} />
-            </a>
-            <a
-              href={`${CELOSCAN_URL}/address/${AGENT_WALLET_ADDRESS}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card/60 border border-border text-muted-foreground hover:text-primary hover:border-primary/30 transition-colors"
-            >
-              <Shield size={12} />
-              Agent Wallet
-              <ExternalLink size={10} />
-            </a>
+            )}
           </motion.div>
         </div>
       </section>
 
-      {/* Trust Indicators */}
-      <section className="py-16 border-t border-border">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {trustIndicators.map((item, i) => (
-              <motion.div
-                key={item.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 * i }}
-                className="p-6 rounded-xl bg-card border border-border hover:border-primary/20 transition-colors text-center"
-              >
-                <div className="inline-flex p-3 rounded-xl bg-primary/10 text-primary mb-4">
-                  {item.icon}
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">{item.title}</h3>
-                <p className="text-sm text-muted-foreground">{item.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
+      {/* Explanation Strip */}
+      <section className="border-y border-white/5 bg-black/40 py-8 relative z-10">
+         <div className="container mx-auto px-4 text-center max-w-4xl">
+            <h3 className="text-lg font-medium text-foreground mb-4">How we categorize matches</h3>
+            <div className="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16 text-sm">
+               <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center text-success shrink-0 font-bold border border-success/30 shadow-[0_0_10px_rgba(53,208,127,0.3)]">✓</div>
+                 <div className="text-left">
+                   <p className="font-bold text-foreground">VALUE BET</p>
+                   <p className="text-muted-foreground">Our model found an edge &gt;8%</p>
+                 </div>
+               </div>
+               <div className="hidden md:block w-px h-10 bg-white/10" />
+               <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-muted-foreground shrink-0 font-bold border border-white/10">✗</div>
+                 <div className="text-left">
+                   <p className="font-bold text-muted-foreground">NO_VALUE_BET</p>
+                   <p className="text-muted-foreground">Market is fairly priced</p>
+                 </div>
+               </div>
+            </div>
+            <p className="mt-8 text-xs text-muted-foreground/60 max-w-lg mx-auto uppercase tracking-widest leading-loose">
+               This absolute transparency is why we're different from every other tipster service on the internet.
+            </p>
+         </div>
       </section>
 
-      {/* Latest Predictions */}
-      {recentWins.length > 0 && (
-        <section className="py-16 border-t border-border">
-          <div className="container mx-auto px-4">
-            <h2 className="text-2xl font-bold text-foreground text-center mb-2">Latest Predictions</h2>
-            <p className="text-muted-foreground text-center mb-10">Our most recent verified results</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-8">
-              {recentWins.map(pred => (
-                <PredictionCard
-                  key={pred.id}
-                  prediction={pred}
-                  onViewDetails={setSelectedPred}
-                />
-              ))}
-            </div>
-            <div className="text-center">
-              <Link to="/track-record" className="inline-flex items-center gap-1 text-primary hover:underline text-sm font-medium">
-                See Full Track Record <ChevronRight size={14} />
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* CTA */}
-      <section className="py-20 border-t border-border">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-4">
-            Ready to get started?
-          </h2>
-          <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-            Explore the most transparent AI prediction agent on Celo. Every prediction is verifiable on-chain.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button asChild size="lg" className="gradient-primary text-primary-foreground glow-primary">
-              <Link to="/dashboard">View Today's Picks</Link>
-            </Button>
-            <Button asChild variant="outline" size="lg" className="border-border">
-              <Link to="/how-it-works">How It Works</Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <PredictionDetailModal
-        prediction={selectedPred}
-        open={!!selectedPred}
-        onClose={() => setSelectedPred(null)}
-      />
     </div>
   );
 }
