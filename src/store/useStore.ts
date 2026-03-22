@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Prediction, Tier, AppStats, PredictionOutcome } from '@/types';
 import * as api from '@/services/api';
+import type { ApiPrediction } from '@/services/api';
 
 type MatchMeta = {
   homeTeam: string;
@@ -21,38 +22,261 @@ export function cachePredictionTx(predictionId: string, txHash: string) {
   if (txHash) predictionTxCache.set(predictionId, txHash);
 }
 
+const ALL_SUPPORTED_LEAGUES = ['EPL', 'LaLiga', 'Bundesliga', 'Ligue1', 'SerieA'];
+
 function inferLeagueFromMatchId(matchId: string): string | null {
   const idx = matchId.indexOf('-');
   if (idx <= 0) return null;
   return matchId.slice(0, idx);
 }
 
-async function warmMatchMetaForPredictions(predictions: api.ApiPrediction[]) {
-  const leagues = new Set<string>();
-  for (const p of predictions) {
-    const league = inferLeagueFromMatchId(p.matchId);
-    if (league) leagues.add(league);
+/**
+ * Parse matchId into its components.
+ *
+ * FORMAT A (new — has numeric fixtureId):
+ *   EPL-538093-TOT-NOT-2026-03-22
+ *   → { format:'A', fixtureId:'538093', homeAbbr:'TOT', awayAbbr:'NOT' }
+ *
+ * FORMAT B (old — no fixtureId):
+ *   EPL-BRI-LIV-2026-03-21
+ *   SerieA-COM-PIS-2026-03-22
+ *   → { format:'B', homeAbbr:'BRI', awayAbbr:'LIV' }
+ *
+ * FORMAT C (bare fixture id):
+ *   EPL-538093
+ *   → { format:'C', fixtureId:'538093' }
+ */
+type ParsedMatchId =
+  | { format: 'A'; fixtureId: string; homeAbbr: string; awayAbbr: string }
+  | { format: 'B'; homeAbbr: string; awayAbbr: string }
+  | { format: 'C'; fixtureId: string }
+  | { format: 'unknown' };
 
+function parseMatchId(matchId: string): ParsedMatchId {
+  const parts = matchId.split('-');
+  // parts[0] = league
+
+  // FORMAT A: league-fixtureId(numeric)-homeAbbr-awayAbbr-YYYY-MM-DD  (7 parts)
+  if (parts.length >= 7 && /^\d+$/.test(parts[1])) {
+    return { format: 'A', fixtureId: parts[1], homeAbbr: parts[2].toUpperCase(), awayAbbr: parts[3].toUpperCase() };
   }
 
-  await Promise.allSettled(
-    Array.from(leagues).map(async (league) => {
-      const res = await api.fetchMatches(league);
-      res.matches.forEach((m) => {
-        const matchId = `${league}-${m.fixtureId}`;
-        const kickoffTime = new Date(`${m.date}T${m.time}:00Z`).toISOString();
-        cacheMatchMeta(matchId, {
-          homeTeam: m.homeTeam,
-          awayTeam: m.awayTeam,
-          kickoffTime,
-          league,
-        });
-      });
-    })
-  );
+  // FORMAT B: league-homeAbbr-awayAbbr-YYYY-MM-DD  (6 parts, parts[3] is year)
+  if (parts.length >= 6 && /^\d{4}$/.test(parts[3])) {
+    return { format: 'B', homeAbbr: parts[1].toUpperCase(), awayAbbr: parts[2].toUpperCase() };
+  }
+
+  // FORMAT C: league-fixtureId  (2 parts)
+  if (parts.length === 2 && /^\d+$/.test(parts[1])) {
+    return { format: 'C', fixtureId: parts[1] };
+  }
+
+  return { format: 'unknown' };
 }
 
-// ---------- helpers ----------
+/**
+ * Generate every abbreviation variant we might try matching against a team name.
+ *
+ * The backend uses API-Football's short names to generate abbreviations.
+ * We don't know the exact algorithm, so we try multiple strategies:
+ *   1. First N chars of full name (uppercased)           NAN → "Nantes"
+ *   2. First N chars of each word (initials style)       PSG → "Paris Saint-Germain"
+ *   3. First N chars of last word                        LIV → "Liverpool" (also catches short names)
+ *   4. Consonants / common nickname patterns             ATA → "Atalanta"
+ *
+ * Returns true if ANY strategy matches the given abbreviation.
+ */
+function teamMatchesAbbr(fullName: string, abbr: string): boolean {
+  const a = abbr.toUpperCase();
+  const len = a.length; // usually 3, sometimes 2-4
+  const n = fullName.toUpperCase();
+
+  // Strategy 1: first N chars of full name
+  if (n.slice(0, len) === a) return true;
+
+  // Strategy 2: first char of each word (up to len words)
+  const words = fullName.replace(/[^a-zA-Z ]/g, ' ').split(/\s+/).filter(Boolean);
+  const initials = words.map(w => w[0].toUpperCase()).join('');
+  if (initials.startsWith(a) || initials === a) return true;
+
+  // Strategy 3: first N chars of the last word
+  const lastName = words[words.length - 1]?.toUpperCase() ?? '';
+  if (lastName.slice(0, len) === a) return true;
+
+  // Strategy 4: first N chars of each word concatenated
+  const wordConcat = words.map(w => w.toUpperCase()).join('');
+  if (wordConcat.slice(0, len) === a) return true;
+
+  // Strategy 5: check if abbr appears as a substring in any single word
+  // (catches e.g. "ATA" in "ATAlanta", "HEL" in "HELlas")
+  for (const word of words) {
+    if (word.toUpperCase().startsWith(a)) return true;
+  }
+
+  // Strategy 6: remove common suffixes (FC, CF, SC, AC, AS, SS, SSD, 1., etc)
+  //             and retry strategy 1 on the cleaned name
+  const cleaned = fullName
+    .replace(/\b(FC|CF|SC|AC|AS|SS|SSD|SPA|SAD|1\.|BV|VfL|VfB|TSG|RB|FSV|SV|FK|SK|NK)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+  if (cleaned.slice(0, len) === a) return true;
+
+  const cleanedWords = cleaned.split(/\s+/).filter(Boolean);
+  const cleanedInitials = cleanedWords.map(w => w[0]).join('');
+  if (cleanedInitials.startsWith(a) || cleanedInitials === a) return true;
+
+  return false;
+}
+
+/**
+ * Fetch ALL pages of predictions for a given resolved state.
+ */
+async function fetchAllPredictions(resolved: boolean): Promise<api.ApiPrediction[]> {
+  const all: api.ApiPrediction[] = [];
+  let page = 1;
+  const limit = 100;
+
+  while (true) {
+    const res = await api.fetchPredictions({ resolved, limit, page });
+    all.push(...res.predictions);
+    if (all.length >= res.total || res.predictions.length < limit) break;
+    page++;
+  }
+
+  return all;
+}
+
+/**
+ * Build a comprehensive team lookup from all fixture data.
+ *
+ * Returns:
+ *   fixtureIdMap:   fixtureId  → MatchMeta
+ *   leagueTeams:    league     → array of { homeTeam, awayTeam, kickoffTime, meta }
+ *
+ * leagueTeams is used for abbr-based matching (Format B).
+ */
+async function buildFixtureLookups(): Promise<{
+  fixtureIdMap: Map<string, MatchMeta>;
+  leagueTeams: Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>;
+}> {
+  const fixtureIdMap = new Map<string, MatchMeta>();
+  const leagueTeams = new Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>();
+
+  await Promise.allSettled(
+    ALL_SUPPORTED_LEAGUES.map(async (league) => {
+      try {
+        const res = await api.fetchMatches(league, 60);
+        const teams: Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }> = [];
+
+        res.matches.forEach((m) => {
+          const kickoffTime = new Date(`${m.date}T${m.time}:00Z`).toISOString();
+          const meta: MatchMeta = { homeTeam: m.homeTeam, awayTeam: m.awayTeam, kickoffTime, league };
+          fixtureIdMap.set(String(m.fixtureId), meta);
+          teams.push({ homeTeam: m.homeTeam, awayTeam: m.awayTeam, kickoffTime, league });
+        });
+
+        leagueTeams.set(league, teams);
+      } catch {
+        leagueTeams.set(league, []);
+      }
+    })
+  );
+
+  return { fixtureIdMap, leagueTeams };
+}
+
+/**
+ * Try to find a fixture match for a Format B prediction using abbr matching.
+ * We try every fixture in the league and check if both team abbrs match.
+ */
+function findByAbbrPair(
+  homeAbbr: string,
+  awayAbbr: string,
+  league: string,
+  leagueTeams: Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>
+): MatchMeta | null {
+  const fixtures = leagueTeams.get(league) ?? [];
+
+  for (const f of fixtures) {
+    if (teamMatchesAbbr(f.homeTeam, homeAbbr) && teamMatchesAbbr(f.awayTeam, awayAbbr)) {
+      return { homeTeam: f.homeTeam, awayTeam: f.awayTeam, kickoffTime: f.kickoffTime, league };
+    }
+  }
+  return null;
+}
+
+/**
+ * Enrich predictions with full homeTeam / awayTeam names.
+ *
+ * Pipeline:
+ *   1. Backend already has names → use directly
+ *   2. Format A/C → look up by fixtureId in fixture map
+ *   3. Format B   → match abbr pair against all fixtures in the league
+ *   4. Anything still missing → use the raw abbr (never show date fragments or TBD)
+ *
+ * Note: fetchSinglePrediction is NOT used — confirmed from console logs that
+ * the backend returns { homeTeam: undefined, awayTeam: undefined } for all
+ * stored predictions. Team names are only available from the fixtures endpoint.
+ */
+async function enrichPredictions(
+  predictions: api.ApiPrediction[],
+  fixtureIdMap: Map<string, MatchMeta>,
+  leagueTeams: Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>
+): Promise<api.ApiPrediction[]> {
+  const enriched: api.ApiPrediction[] = [];
+
+  for (const p of predictions) {
+    // Stage 1: backend already has names
+    if (p.homeTeam && p.awayTeam) {
+      enriched.push(p);
+      const league = inferLeagueFromMatchId(p.matchId) ?? 'Unknown';
+      cacheMatchMeta(p.matchId, {
+        homeTeam: p.homeTeam, awayTeam: p.awayTeam,
+        kickoffTime: new Date(p.timestamp * 1000).toISOString(), league,
+      });
+      continue;
+    }
+
+    const parsed = parseMatchId(p.matchId);
+    const league = inferLeagueFromMatchId(p.matchId) ?? 'Unknown';
+
+    // Stage 2: Format A or C — lookup by fixtureId
+    if ((parsed.format === 'A' || parsed.format === 'C')) {
+      const meta = fixtureIdMap.get(parsed.fixtureId);
+      if (meta) {
+        enriched.push({ ...p, homeTeam: meta.homeTeam, awayTeam: meta.awayTeam });
+        cacheMatchMeta(p.matchId, meta);
+        continue;
+      }
+    }
+
+    // Stage 3: Format A or B — match by abbr pair across all fixtures in league
+    if (parsed.format === 'A' || parsed.format === 'B') {
+      const { homeAbbr, awayAbbr } = parsed as { homeAbbr: string; awayAbbr: string };
+      const meta = findByAbbrPair(homeAbbr, awayAbbr, league, leagueTeams);
+      if (meta) {
+        enriched.push({ ...p, homeTeam: meta.homeTeam, awayTeam: meta.awayTeam });
+        cacheMatchMeta(p.matchId, meta);
+        continue;
+      }
+
+      // Stage 4: abbr match failed — use the raw abbreviations (correct and readable,
+      // just not full names). NEVER fall back to date fragments like "2026".
+      console.warn(`[enrichPredictions] abbr match failed for ${p.matchId} (${homeAbbr} vs ${awayAbbr}) — using abbrs`);
+      enriched.push({ ...p, homeTeam: homeAbbr, awayTeam: awayAbbr });
+      continue;
+    }
+
+    // Stage 4: Format C fixtureId not in upcoming + Format unknown
+    // Use whatever we have — raw abbrs if available, otherwise TBD
+    enriched.push(p);
+  }
+
+  return enriched;
+}
+
+// ---------- mapping ----------
 
 function mapOutcome(raw: string | null): PredictionOutcome | undefined {
   if (!raw) return undefined;
@@ -68,22 +292,14 @@ function apiToFrontend(p: api.ApiPrediction): Prediction {
   const outcome = mapOutcome(p.prediction);
   const hasValueBet = p.prediction !== null;
   const confidence = Math.round(p.confidence <= 1 ? p.confidence * 100 : p.confidence);
-  const parts = p.matchId.split('-');
-  const league = parts.length > 1 ? parts[0] : 'Unknown';
-
+  const league = inferLeagueFromMatchId(p.matchId) ?? 'Unknown';
   const meta = matchMetaCache.get(p.matchId);
 
-  let homeTeam = '—';
-  let awayTeam = '—';
-  if (parts.length >= 3) {
-    homeTeam = parts[1];
-    awayTeam = parts[2];
-  } else if (parts.length === 2) {
-    homeTeam = meta?.homeTeam ?? 'TBD';
-    awayTeam = meta?.awayTeam ?? 'TBD';
-  }
+  const homeTeam = p.homeTeam ?? meta?.homeTeam ?? 'TBD';
+  const awayTeam = p.awayTeam ?? meta?.awayTeam ?? 'TBD';
 
   const resultStatus = p.resolved ? (p.correct ? 'win' : 'loss') : 'pending';
+  const edge = p.edge != null ? Math.round(p.edge * 10) / 10 : 0;
 
   return {
     id: p.predictionId,
@@ -98,7 +314,7 @@ function apiToFrontend(p: api.ApiPrediction): Prediction {
       hasValueBet,
       outcome,
       confidence,
-      edge: p.edge ? Math.round(p.edge * 10) / 10 : 0,
+      edge,
       marketOdds: p.marketOdds,
       trueProbabilities: p.trueProbabilities,
     },
@@ -109,10 +325,10 @@ function apiToFrontend(p: api.ApiPrediction): Prediction {
     recordedAt: new Date(p.timestamp * 1000).toISOString(),
     modelFactors: p.factors
       ? [
-        ...(p.factors.formScore != null ? [{ name: 'Form Score', weight: 25, score: p.factors.formScore, reasoning: '' }] : []),
-        ...(p.factors.injuryImpact != null ? [{ name: 'Injury Impact', weight: 25, score: p.factors.injuryImpact, reasoning: '' }] : []),
-        ...(p.factors.h2hScore != null ? [{ name: 'H2H Score', weight: 25, score: p.factors.h2hScore, reasoning: '' }] : []),
-        ...(p.factors.tablePositionScore != null ? [{ name: 'Table Position', weight: 25, score: p.factors.tablePositionScore, reasoning: '' }] : []),
+        ...(p.factors.formScore != null ? [{ name: 'Form Score', weight: 25, score: Number(p.factors.formScore), reasoning: '' }] : []),
+        ...(p.factors.injuryImpact != null ? [{ name: 'Injury Impact', weight: 25, score: Number(p.factors.injuryImpact), reasoning: '' }] : []),
+        ...(p.factors.h2hScore != null ? [{ name: 'H2H Score', weight: 25, score: Number(p.factors.h2hScore), reasoning: '' }] : []),
+        ...(p.factors.tablePositionScore != null ? [{ name: 'Table Position', weight: 25, score: Number(p.factors.tablePositionScore), reasoning: '' }] : []),
       ]
       : undefined,
   };
@@ -125,10 +341,30 @@ const emptyStats: AppStats = {
   avgConfidence: 0,
 };
 
-// ---------- state ----------
+// ---------- interfaces ----------
 
 interface AgentStatus {
   online: boolean;
+  error?: string;
+  agentName?: string;
+  version?: string;
+  dashboardStats?: {
+    totalPredictions: number;
+    resolved: number;
+    pending: number;
+    correct: number;
+    incorrect: number;
+    accuracy: number;
+  };
+  leagueBreakdown?: Array<{
+    league: string;
+    total: number;
+    resolved: number;
+    correct: number;
+    accuracy: number;
+  }>;
+  lastPrediction?: ApiPrediction | null;
+  recentPredictions?: ApiPrediction[];
   blockchain?: {
     enabled: boolean;
     agentWallet: string;
@@ -142,7 +378,7 @@ interface AppState {
   walletConnected: boolean;
   tokenBalance: number;
   tier: Tier;
-  paidTier: Tier; // Manual upgrade tier stored locally
+  paidTier: Tier;
 
   upcomingPredictions: Prediction[];
   historicalPredictions: Prediction[];
@@ -169,6 +405,8 @@ interface AppState {
   setTokenBalance: (balance: number) => void;
   unlockTier: (tier: Tier) => void;
 }
+
+// ---------- store ----------
 
 export const useStore = create<AppState>()(
   persist(
@@ -204,23 +442,29 @@ export const useStore = create<AppState>()(
       fetchPredictions: async () => {
         set({ isLoading: true, error: null });
         try {
-          const [unresolvedRes, resolvedRes] = await Promise.allSettled([
-            api.fetchPredictions({ resolved: false, limit: 50 }),
-            api.fetchPredictions({ resolved: true, limit: 50 }),
+          // Fetch all pages + build fixture lookups in parallel
+          const [unresolvedRaw, resolvedRaw, lookups] = await Promise.all([
+            fetchAllPredictions(false),
+            fetchAllPredictions(true),
+            buildFixtureLookups(),
           ]);
 
-          const unresolvedRaw = unresolvedRes.status === 'fulfilled' ? unresolvedRes.value.predictions : [];
-          const resolvedRaw = resolvedRes.status === 'fulfilled' ? resolvedRes.value.predictions : [];
-          await warmMatchMetaForPredictions([...unresolvedRaw, ...resolvedRaw]);
+          const { fixtureIdMap, leagueTeams } = lookups;
 
-          const upcoming = (unresolvedRes.status === 'fulfilled' ? unresolvedRaw : [])
-            .map(apiToFrontend)
-            .filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
+          console.log(`[store] fetched ${unresolvedRaw.length} unresolved, ${resolvedRaw.length} resolved`);
+          console.log('[store] fixtureIdMap size:', fixtureIdMap.size);
+          console.log('[store] sample matchIds:', [...unresolvedRaw, ...resolvedRaw].slice(0, 8).map(p => p.matchId));
 
-          const historical = (resolvedRes.status === 'fulfilled' ? resolvedRaw : [])
-            .map(apiToFrontend)
-            .filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
+          const [enrichedUnresolved, enrichedResolved] = await Promise.all([
+            enrichPredictions(unresolvedRaw, fixtureIdMap, leagueTeams),
+            enrichPredictions(resolvedRaw, fixtureIdMap, leagueTeams),
+          ]);
 
+          const upcoming = enrichedUnresolved.map(apiToFrontend);
+          const historical = enrichedResolved.map(apiToFrontend);
+
+          console.log('[store] upcoming team names:', upcoming.slice(0, 8).map(p => `${p.match.homeTeam} vs ${p.match.awayTeam}`));
+          console.log('[store] historical team names:', historical.map(p => `${p.match.homeTeam} vs ${p.match.awayTeam}`));
 
           set({
             upcomingPredictions: upcoming,
@@ -229,7 +473,7 @@ export const useStore = create<AppState>()(
             lastUpdated: new Date(),
             hasNewPicks: false,
             stagedUpcoming: [],
-            stagedHistorical: []
+            stagedHistorical: [],
           });
         } catch (err) {
           console.warn('[store] fetchPredictions failed:', err);
@@ -239,43 +483,43 @@ export const useStore = create<AppState>()(
 
       checkNewPicksBackground: async () => {
         try {
-          const [unresolvedRes, resolvedRes] = await Promise.allSettled([
-            api.fetchPredictions({ resolved: false, limit: 50 }),
-            api.fetchPredictions({ resolved: true, limit: 50 }),
+          const [unresolvedRaw, resolvedRaw, lookups] = await Promise.all([
+            fetchAllPredictions(false),
+            fetchAllPredictions(true),
+            buildFixtureLookups(),
           ]);
 
-          if (unresolvedRes.status === 'fulfilled' && resolvedRes.status === 'fulfilled') {
-            await warmMatchMetaForPredictions([...unresolvedRes.value.predictions, ...resolvedRes.value.predictions]);
+          const { fixtureIdMap, leagueTeams } = lookups;
 
-            const upcoming = unresolvedRes.value.predictions.map(apiToFrontend).filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
-            const historical = resolvedRes.value.predictions.map(apiToFrontend).filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
+          const [enrichedUnresolved, enrichedResolved] = await Promise.all([
+            enrichPredictions(unresolvedRaw, fixtureIdMap, leagueTeams),
+            enrichPredictions(resolvedRaw, fixtureIdMap, leagueTeams),
+          ]);
 
+          const upcoming = enrichedUnresolved.map(apiToFrontend);
+          const historical = enrichedResolved.map(apiToFrontend);
 
-            // Check if there's any diff in IDs between current arrays and fetched arrays
-            const currentUpcomingIds = new Set(get().upcomingPredictions.map(p => p.id));
-            const currentHistoricalIds = new Set(get().historicalPredictions.map(p => p.id));
+          const currentUpcomingIds = new Set(get().upcomingPredictions.map(p => p.id));
+          const currentHistoricalIds = new Set(get().historicalPredictions.map(p => p.id));
 
-            let hasChanges = false;
-            if (upcoming.length !== currentUpcomingIds.size || historical.length !== currentHistoricalIds.size) {
-              hasChanges = true;
-            } else {
-              for (const p of upcoming) if (!currentUpcomingIds.has(p.id)) hasChanges = true;
-              for (const p of historical) if (!currentHistoricalIds.has(p.id)) hasChanges = true;
-            }
+          let hasChanges =
+            upcoming.length !== currentUpcomingIds.size ||
+            historical.length !== currentHistoricalIds.size;
 
-            if (hasChanges) {
-              set({
-                stagedUpcoming: upcoming,
-                stagedHistorical: historical,
-                hasNewPicks: true
-              });
-            } else {
-              // Even if no new picks, we successfully checked
-              set({ lastUpdated: new Date() });
-            }
+          if (!hasChanges) {
+            for (const p of upcoming) { if (!currentUpcomingIds.has(p.id)) { hasChanges = true; break; } }
+          }
+          if (!hasChanges) {
+            for (const p of historical) { if (!currentHistoricalIds.has(p.id)) { hasChanges = true; break; } }
+          }
+
+          if (hasChanges) {
+            set({ stagedUpcoming: upcoming, stagedHistorical: historical, hasNewPicks: true });
+          } else {
+            set({ lastUpdated: new Date() });
           }
         } catch (err) {
-          console.warn('[store] silent fetch background failed:', err);
+          console.warn('[store] background fetch failed:', err);
         }
       },
 
@@ -288,7 +532,7 @@ export const useStore = create<AppState>()(
             hasNewPicks: false,
             stagedUpcoming: [],
             stagedHistorical: [],
-            lastUpdated: new Date()
+            lastUpdated: new Date(),
           });
         }
       },
@@ -296,40 +540,92 @@ export const useStore = create<AppState>()(
       fetchStats: async () => {
         set({ isLoading: true });
         try {
-          const res = await api.fetchStats();
-          const s = res.stats;
-          const accuracy = s.accuracy <= 1 ? Math.round(s.accuracy * 100) : Math.round(s.accuracy);
+          const [statsRes, resolvedRaw] = await Promise.all([
+            api.fetchStats(),
+            fetchAllPredictions(true),
+          ]);
+
+          const correct = resolvedRaw.filter(p => p.correct === true).length;
+          const resolved = resolvedRaw.length;
+          const winRate = resolved > 0 ? Math.round((correct / resolved) * 100) : 0;
+
           set({
             stats: {
-              totalPredictions: s.totalPredictions,
-              correctPredictions: s.correct,
-              winRate: accuracy,
+              totalPredictions: statsRes?.stats?.totalPredictions ?? resolved,
+              correctPredictions: correct,
+              winRate,
               avgConfidence: 0,
             },
             isLoading: false,
           });
         } catch {
-          console.warn('[store] fetchStats failed');
-          set({ stats: emptyStats, isLoading: false });
+          try {
+            const res = await api.fetchStats();
+            const s = res.stats;
+            const accuracy = s.accuracy <= 1 ? Math.round(s.accuracy * 100) : Math.round(s.accuracy);
+            set({
+              stats: {
+                totalPredictions: s.totalPredictions,
+                correctPredictions: s.correct,
+                winRate: accuracy,
+                avgConfidence: 0,
+              },
+              isLoading: false,
+            });
+          } catch {
+            console.warn('[store] fetchStats failed completely');
+            set({ stats: emptyStats, isLoading: false });
+          }
         }
       },
 
       fetchAgentStatus: async () => {
-        try {
-          const res = await api.fetchAgentStatus();
-          set({ agentStatus: { online: res.success, blockchain: res.blockchain } });
-        } catch {
-          set({ agentStatus: { online: false } });
+        const [statusOutcome, healthOutcome] = await Promise.allSettled([
+          api.fetchAgentStatus(),
+          api.fetchHealth(),
+        ]);
+
+        const health = healthOutcome.status === 'fulfilled' ? healthOutcome.value : null;
+        const blockchain =
+          health?.blockchain &&
+            (health.blockchain.agent_wallet != null ||
+              health.blockchain.prediction_contract != null ||
+              health.blockchain.chain_id != null)
+            ? {
+              enabled: Boolean(health.blockchain.enabled),
+              agentWallet: String(health.blockchain.agent_wallet ?? ''),
+              predictionContract: String(health.blockchain.prediction_contract ?? ''),
+              chainId: Number(health.blockchain.chain_id ?? 0),
+            }
+            : undefined;
+
+        if (statusOutcome.status !== 'fulfilled') {
+          set({ agentStatus: { online: false, blockchain } });
+          return;
         }
+
+        const res = statusOutcome.value;
+        if (!res.success) {
+          set({ agentStatus: { online: false, error: res.error, blockchain } });
+          return;
+        }
+
+        set({
+          agentStatus: {
+            online: true,
+            agentName: res.agent,
+            version: res.version,
+            dashboardStats: res.stats,
+            leagueBreakdown: res.leagueBreakdown,
+            lastPrediction: res.lastPrediction,
+            recentPredictions: res.recentPredictions,
+            blockchain,
+          },
+        });
       },
 
-      setTokenBalance: (balance) => {
-        set({ tokenBalance: balance });
-      },
-
-      unlockTier: (tier) => {
-        set({ paidTier: tier });
-      },
+      setTokenBalance: (balance) => set({ tokenBalance: balance }),
+      unlockTier: (tier) => set({ paidTier: tier }),
     }),
     {
       name: 'betoracle-storage',

@@ -2,12 +2,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useStore } from '@/store/useStore';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { CheckCircle, Cpu } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { PredictionDetailModal } from '@/components/PredictionDetailModal';
 import { Prediction } from '@/types';
+
+function outcomeLabel(outcome: string | undefined): string {
+  switch (outcome) {
+    case 'home_win': return 'Home Win';
+    case 'away_win': return 'Away Win';
+    case 'draw': return 'Draw';
+    default: return '—';
+  }
+}
+
+function formatEdge(edge: number | undefined | null): string {
+  if (edge == null || edge === 0) return '—';
+  return `+${edge.toFixed(1)}%`;
+}
 
 export default function ResultsPage() {
   const { fetchPredictions, historicalPredictions, isLoading } = useStore();
@@ -17,95 +30,132 @@ export default function ResultsPage() {
     fetchPredictions();
   }, [fetchPredictions]);
 
-  const resolvedPredictions = useMemo(() => {
-    return historicalPredictions
-      .filter(p => p.result && p.result.status !== 'pending')
-      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime());
-  }, [historicalPredictions]);
+  // Only show fully resolved (win or loss) — excludes pending matches
+  const resolvedPredictions = useMemo(() =>
+    historicalPredictions
+      .filter(p => p.result && (p.result.status === 'win' || p.result.status === 'loss'))
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()),
+    [historicalPredictions]
+  );
 
-  const { wins, losses } = useMemo(() => {
-    let w = 0, l = 0;
-    resolvedPredictions.forEach(p => {
-      if (p.result?.status === 'win') w++;
-      else l++;
-    });
-    return { wins: w, losses: l };
-  }, [resolvedPredictions]);
+  const wins = resolvedPredictions.filter(p => p.result?.status === 'win').length;
+  const losses = resolvedPredictions.filter(p => p.result?.status === 'loss').length;
+  const winRate = resolvedPredictions.length > 0
+    ? Math.round((wins / resolvedPredictions.length) * 100) : 0;
 
   return (
     <div className="container mx-auto px-4 py-8 md:py-12 min-h-screen">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        
-        <div className="mb-8 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-4">
-           <div>
-             <h1 className="text-3xl font-bold text-foreground mb-2 flex items-center justify-center md:justify-start gap-3">
-               Past Results
-             </h1>
-             <p className="text-muted-foreground">Historical performance of our recommended Smart Picks.</p>
-           </div>
-           {resolvedPredictions.length > 0 && (
-             <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl flex gap-4 text-sm font-semibold">
-               <span className="text-success">Won {wins}</span>
-               <span className="text-destructive">Lost {losses}</span>
-             </div>
-           )}
+
+        {/* Header */}
+        <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-1">Past Results</h1>
+            <p className="text-muted-foreground text-sm">
+              Historical performance of our AI's Smart Picks — every prediction recorded on-chain before kick-off.
+            </p>
+          </div>
+          {resolvedPredictions.length > 0 && (
+            <div className="flex items-center gap-4 px-5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm font-semibold shrink-0">
+              <span className="text-emerald-400">{wins} Won</span>
+              <span className="text-white/20">|</span>
+              <span className="text-red-400">{losses} Lost</span>
+              <span className="text-white/20">|</span>
+              <span className="text-muted-foreground">{winRate}% Win Rate</span>
+            </div>
+          )}
         </div>
 
+        {/* Loading — enrichment fetches team names so takes a moment */}
         {isLoading ? (
-          <div className="text-center py-20 text-muted-foreground animate-pulse glass-card flex flex-col items-center rounded-2xl border-white/10">
-            <Cpu size={40} className="mx-auto mb-4 opacity-50 text-primary" />
-            <p>Loading past results...</p>
+          <div className="text-center py-20 glass-card flex flex-col items-center rounded-2xl border-white/10 animate-pulse">
+            <Cpu size={40} className="mb-4 opacity-50 text-primary" />
+            <p className="text-muted-foreground">Loading results and resolving team names...</p>
           </div>
+
         ) : resolvedPredictions.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground glass-card rounded-2xl border-white/5">
+          <div className="text-center py-20 glass-card rounded-2xl border-white/5">
             <CheckCircle size={40} className="mx-auto mb-4 opacity-40 text-primary" />
             <p className="text-lg font-medium mb-2 text-foreground">No resolved predictions yet</p>
-            <p className="text-sm max-w-sm mx-auto">Matches must be played and verified on the blockchain before appearing here.</p>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              Matches must be played and verified on-chain before appearing here.
+            </p>
           </div>
+
         ) : (
-          <Card className="glass-card border-white/5 overflow-hidden p-0 max-h-[700px] overflow-y-auto no-scrollbar">
-             <div className="overflow-x-auto">
-               <table className="w-full text-left border-collapse text-sm">
-                 <thead>
-                   <tr className="bg-black/40 text-[10px] uppercase text-muted-foreground tracking-widest font-bold border-b border-white/5 sticky top-0 z-10 hidden sm:table-row">
-                     <th className="p-4">Date</th>
-                     <th className="p-4">Match</th>
-                     <th className="p-4 text-center">Our Pick</th>
-                     <th className="p-4 text-center">Advantage</th>
-                     <th className="p-4 text-right">Result</th>
-                   </tr>
-                 </thead>
-                 <tbody className="divide-y divide-white/5 bg-background/20">
-                   {resolvedPredictions.map((pred) => (
-                     <tr key={pred.id} className="hover:bg-white/5 transition-colors cursor-pointer group flex flex-col sm:table-row py-3 sm:py-0" onClick={() => setSelectedPred(pred)}>
-                       <td className="px-4 pb-1 sm:py-4 text-muted-foreground font-mono text-xs sm:text-sm">{format(new Date(pred.recordedAt || ''), 'MMM dd, HH:mm')}</td>
-                       <td className="px-4 py-1 sm:py-4">
-                         <div className="font-semibold text-foreground">{pred.match.homeTeam} vs {pred.match.awayTeam}</div>
-                         <div className="text-[10px] text-muted-foreground uppercase">{pred.match.league}</div>
-                       </td>
-                       <td className="px-4 py-1 sm:py-4 sm:text-center text-xs sm:text-sm">
-                         Pick: <strong>{pred.prediction.outcome === 'home_win' ? 'Home' : pred.prediction.outcome === 'away_win' ? 'Away' : 'Draw'}</strong>
-                       </td>
-                       <td className="px-4 py-1 sm:py-4 sm:text-center font-mono text-primary text-xs sm:text-sm">
-                         +{pred.prediction.edge.toFixed(1)}%
-                       </td>
-                       <td className="px-4 pt-2 sm:py-4 sm:text-right">
-                         <div className={cn("inline-flex items-center justify-center font-bold font-mono text-xs px-3 h-8 rounded-md border", 
-                           pred.result?.status === 'win' ? 'bg-success/10 text-success border-success/30' : 'bg-destructive/10 text-destructive border-destructive/20'
-                         )}>
-                           {pred.result?.status === 'win' ? 'WON' : 'LOST'}
-                         </div>
-                       </td>
-                     </tr>
-                   ))}
-                 </tbody>
-               </table>
-             </div>
+          <Card className="glass-card border-white/5 overflow-hidden p-0 max-h-[72vh] overflow-y-auto no-scrollbar">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-black/60 text-[10px] uppercase text-muted-foreground tracking-widest font-bold border-b border-white/5">
+                    <th className="p-4 whitespace-nowrap">Date</th>
+                    <th className="p-4">Match</th>
+                    <th className="p-4 whitespace-nowrap">League</th>
+                    <th className="p-4 text-center whitespace-nowrap">Our Pick</th>
+                    <th className="p-4 text-center whitespace-nowrap">Confidence</th>
+                    <th className="p-4 text-center whitespace-nowrap">Edge</th>
+                    <th className="p-4 text-right whitespace-nowrap">Result</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {resolvedPredictions.map(pred => (
+                    <tr
+                      key={pred.id}
+                      onClick={() => setSelectedPred(pred)}
+                      className="hover:bg-white/5 transition-colors cursor-pointer"
+                    >
+                      <td className="p-4 text-muted-foreground font-mono text-xs whitespace-nowrap">
+                        {format(new Date(pred.recordedAt), 'MMM dd, HH:mm')}
+                      </td>
+
+                      <td className="p-4">
+                        <div className="font-semibold text-foreground whitespace-nowrap">
+                          {pred.match.homeTeam}
+                          <span className="text-muted-foreground font-normal mx-2">vs</span>
+                          {pred.match.awayTeam}
+                        </div>
+                      </td>
+
+                      <td className="p-4">
+                        <span className="text-xs font-semibold text-primary/70 uppercase tracking-wider">
+                          {pred.match.league}
+                        </span>
+                      </td>
+
+                      <td className="p-4 text-center">
+                        <span className="text-sm font-bold text-foreground">
+                          {outcomeLabel(pred.prediction.outcome)}
+                        </span>
+                      </td>
+
+                      <td className="p-4 text-center font-mono text-xs text-muted-foreground">
+                        {pred.prediction.confidence != null ? `${pred.prediction.confidence}%` : '—'}
+                      </td>
+
+                      <td className="p-4 text-center font-mono text-xs text-primary">
+                        {formatEdge(pred.prediction.edge)}
+                      </td>
+
+                      <td className="p-4 text-right">
+                        <span className={cn(
+                          'inline-flex items-center justify-center font-bold font-mono text-xs px-3 h-7 rounded-md border',
+                          pred.result?.status === 'win'
+                            ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/30'
+                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                        )}>
+                          {pred.result?.status === 'win' ? 'WON' : 'LOST'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         )}
 
       </motion.div>
-      
+
       <PredictionDetailModal
         prediction={selectedPred}
         open={!!selectedPred}

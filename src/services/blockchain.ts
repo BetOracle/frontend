@@ -9,12 +9,18 @@ import {
   AGENT_WALLET_ABI,
 } from "@/config/contracts";
 import { celo } from "viem/chains";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, isHex } from "viem";
 
 const publicClient = createPublicClient({
   chain: celo,
   transport: http(),
 }) as any;
+
+function bytes32ToHex(v: unknown): string {
+  if (typeof v === "string" && isHex(v)) return v;
+  if (typeof v === "bigint") return `0x${v.toString(16).padStart(64, "0")}`;
+  return String(v ?? "");
+}
 
 // --- public read helpers ---
 
@@ -94,12 +100,13 @@ export async function getAgentProfile(): Promise<AgentProfile | null> {
       functionName: 'getProfile',
       args: [],
     });
+    const r = result as Record<string, unknown>;
     return {
-      agentId: (result as any).agentId as string,
-      name: (result as any).name,
-      metadataURI: (result as any).metadataURI,
-      createdAt: Number((result as any).createdAt),
-      active: (result as any).active,
+      agentId: bytes32ToHex(r.agentId),
+      name: String(r.name ?? ""),
+      metadataURI: String(r.metadataURI ?? ""),
+      createdAt: Number(r.createdAt ?? 0),
+      active: Boolean(r.active),
     };
   } catch (err) {
     console.warn("[blockchain] getProfile failed:", err);
@@ -123,12 +130,13 @@ export async function getAgentReputation(): Promise<AgentReputation | null> {
       functionName: 'getReputation',
       args: [],
     });
+    const r = result as Record<string, unknown>;
     return {
-      totalPredictions: Number((result as any).totalPredictions),
-      correctPredictions: Number((result as any).correctPredictions),
-      totalStaked: BigInt((result as any).totalStaked),
-      reputationScore: Number((result as any).reputationScore),
-      lastUpdated: Number((result as any).lastUpdated),
+      totalPredictions: Number(r.totalPredictions ?? 0),
+      correctPredictions: Number(r.correctPredictions ?? 0),
+      totalStaked: BigInt(String(r.totalStaked ?? 0)),
+      reputationScore: Number(r.reputationScore ?? 0),
+      lastUpdated: Number(r.lastUpdated ?? 0),
     };
   } catch (err) {
     console.warn("[blockchain] getReputation failed:", err);

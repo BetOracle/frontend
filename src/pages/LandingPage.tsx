@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/store/useStore';
-import { Target, BarChart3, Database, ShieldCheck, ArrowRight, Wallet } from 'lucide-react';
+import { Target, Database, ShieldCheck, ArrowRight } from 'lucide-react';
 import { ConnectButton, useActiveAccount } from 'thirdweb/react';
 import { thirdwebClient, celoChain } from '@/config/thirdweb';
 
@@ -62,15 +62,14 @@ export default function LandingPage() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6"
           >
             {!account?.address ? (
-              <ConnectButton 
-                client={thirdwebClient} 
+              <ConnectButton
+                client={thirdwebClient}
                 chain={celoChain}
                 connectButton={{
-                  className: "w-full sm:w-auto text-base h-14 px-8 gradient-primary text-primary-foreground font-bold shadow-lg shadow-primary/20",
-                  label: "Connect Wallet"
+                  className: "gradient-primary text-primary-foreground font-bold px-8 py-6 text-lg",
+                  label: "Connect Wallet",
                 }}
               />
-
             ) : (
               <Link to="/dashboard">
                 <Button className="gradient-primary text-primary-foreground font-bold px-8 py-6 text-lg">

@@ -19,13 +19,6 @@ export function WalletButton() {
       <ConnectButton 
         client={thirdwebClient} 
         chain={celoChain}
-        connectButton={{
-          className: "gradient-primary text-black font-bold h-9 px-4 rounded-lg shadow-lg shadow-primary/20",
-          label: "Connect Wallet",
-        }}
-        detailsButton={{
-          className: "bg-black/20 border border-white/10 rounded-lg h-9 px-3 hover:bg-black/40 transition-colors",
-        }}
       />
     </div>
   );

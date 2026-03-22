@@ -63,7 +63,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {!isConnected ? (
+        {!account?.address ? (
           <div className="py-8 text-center bg-black/20 rounded-xl border border-white/5">
             <ShieldCheck size={40} className="mx-auto text-muted-foreground opacity-50 mb-3" />
             <p className="text-lg font-medium text-foreground">Wallet Not Connected</p>
