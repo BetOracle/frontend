@@ -32,6 +32,7 @@ async function warmMatchMetaForPredictions(predictions: api.ApiPrediction[]) {
   for (const p of predictions) {
     const league = inferLeagueFromMatchId(p.matchId);
     if (league) leagues.add(league);
+
   }
 
   await Promise.allSettled(
@@ -71,7 +72,7 @@ function apiToFrontend(p: api.ApiPrediction): Prediction {
   const league = parts.length > 1 ? parts[0] : 'Unknown';
 
   const meta = matchMetaCache.get(p.matchId);
-  
+
   let homeTeam = '—';
   let awayTeam = '—';
   if (parts.length >= 3) {
@@ -108,11 +109,11 @@ function apiToFrontend(p: api.ApiPrediction): Prediction {
     recordedAt: new Date(p.timestamp * 1000).toISOString(),
     modelFactors: p.factors
       ? [
-          ...(p.factors.formScore != null ? [{ name: 'Form Score', weight: 25, score: p.factors.formScore, reasoning: '' }] : []),
-          ...(p.factors.injuryImpact != null ? [{ name: 'Injury Impact', weight: 25, score: p.factors.injuryImpact, reasoning: '' }] : []),
-          ...(p.factors.h2hScore != null ? [{ name: 'H2H Score', weight: 25, score: p.factors.h2hScore, reasoning: '' }] : []),
-          ...(p.factors.tablePositionScore != null ? [{ name: 'Table Position', weight: 25, score: p.factors.tablePositionScore, reasoning: '' }] : []),
-        ]
+        ...(p.factors.formScore != null ? [{ name: 'Form Score', weight: 25, score: p.factors.formScore, reasoning: '' }] : []),
+        ...(p.factors.injuryImpact != null ? [{ name: 'Injury Impact', weight: 25, score: p.factors.injuryImpact, reasoning: '' }] : []),
+        ...(p.factors.h2hScore != null ? [{ name: 'H2H Score', weight: 25, score: p.factors.h2hScore, reasoning: '' }] : []),
+        ...(p.factors.tablePositionScore != null ? [{ name: 'Table Position', weight: 25, score: p.factors.tablePositionScore, reasoning: '' }] : []),
+      ]
       : undefined,
   };
 }
@@ -215,15 +216,15 @@ export const useStore = create<AppState>()(
           const upcoming = (unresolvedRes.status === 'fulfilled' ? unresolvedRaw : [])
             .map(apiToFrontend)
             .filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
-            
+
           const historical = (resolvedRes.status === 'fulfilled' ? resolvedRaw : [])
             .map(apiToFrontend)
             .filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
 
 
-          set({ 
-            upcomingPredictions: upcoming, 
-            historicalPredictions: historical, 
+          set({
+            upcomingPredictions: upcoming,
+            historicalPredictions: historical,
             isLoading: false,
             lastUpdated: new Date(),
             hasNewPicks: false,
@@ -249,11 +250,11 @@ export const useStore = create<AppState>()(
             const upcoming = unresolvedRes.value.predictions.map(apiToFrontend).filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
             const historical = resolvedRes.value.predictions.map(apiToFrontend).filter(p => p.match.homeTeam !== 'TBD' && p.match.awayTeam !== 'TBD');
 
-            
+
             // Check if there's any diff in IDs between current arrays and fetched arrays
             const currentUpcomingIds = new Set(get().upcomingPredictions.map(p => p.id));
             const currentHistoricalIds = new Set(get().historicalPredictions.map(p => p.id));
-            
+
             let hasChanges = false;
             if (upcoming.length !== currentUpcomingIds.size || historical.length !== currentHistoricalIds.size) {
               hasChanges = true;
@@ -263,10 +264,10 @@ export const useStore = create<AppState>()(
             }
 
             if (hasChanges) {
-              set({ 
+              set({
                 stagedUpcoming: upcoming,
                 stagedHistorical: historical,
-                hasNewPicks: true 
+                hasNewPicks: true
               });
             } else {
               // Even if no new picks, we successfully checked
@@ -279,17 +280,17 @@ export const useStore = create<AppState>()(
       },
 
       applyNewPicks: () => {
-         const { stagedUpcoming, stagedHistorical } = get();
-         if (stagedUpcoming.length > 0 || stagedHistorical.length > 0) {
-           set({ 
-             upcomingPredictions: stagedUpcoming,
-             historicalPredictions: stagedHistorical,
-             hasNewPicks: false,
-             stagedUpcoming: [],
-             stagedHistorical: [],
-             lastUpdated: new Date()
-           });
-         }
+        const { stagedUpcoming, stagedHistorical } = get();
+        if (stagedUpcoming.length > 0 || stagedHistorical.length > 0) {
+          set({
+            upcomingPredictions: stagedUpcoming,
+            historicalPredictions: stagedHistorical,
+            hasNewPicks: false,
+            stagedUpcoming: [],
+            stagedHistorical: [],
+            lastUpdated: new Date()
+          });
+        }
       },
 
       fetchStats: async () => {
