@@ -1,38 +1,30 @@
 // ============================================================
-// Blockchain Service — read-only contract calls via thirdweb
+// Blockchain Service — read-only contract calls via viem
 // ============================================================
 
-import { getContract, readContract } from "thirdweb";
-import { thirdwebClient, celoChain } from "@/config/thirdweb";
 import {
   PREDICTION_CONTRACT_ADDRESS,
   AGENT_WALLET_ADDRESS,
   PREDICTION_ABI,
   AGENT_WALLET_ABI,
 } from "@/config/contracts";
+import { celo } from "viem/chains";
+import { createPublicClient, http } from "viem";
 
-// --- contracts ---
-
-const predictionContract = getContract({
-  client: thirdwebClient,
-  chain: celoChain,
-  address: PREDICTION_CONTRACT_ADDRESS,
-});
-
-const agentWalletContract = getContract({
-  client: thirdwebClient,
-  chain: celoChain,
-  address: AGENT_WALLET_ADDRESS,
-});
+const publicClient = createPublicClient({
+  chain: celo,
+  transport: http(),
+}) as any;
 
 // --- public read helpers ---
 
 export async function getOnChainTotalPredictions(): Promise<number> {
   try {
-    const result = await readContract({
-      contract: predictionContract,
-      method: "function totalPredictions() view returns (uint256)",
-      params: [],
+    const result = await publicClient.readContract({
+      address: PREDICTION_CONTRACT_ADDRESS as `0x${string}`,
+      abi: PREDICTION_ABI,
+      functionName: 'totalPredictions',
+      args: [],
     });
     return Number(result);
   } catch (err) {
@@ -43,10 +35,11 @@ export async function getOnChainTotalPredictions(): Promise<number> {
 
 export async function getOnChainCorrectPredictions(): Promise<number> {
   try {
-    const result = await readContract({
-      contract: predictionContract,
-      method: "function correctPredictions() view returns (uint256)",
-      params: [],
+    const result = await publicClient.readContract({
+      address: PREDICTION_CONTRACT_ADDRESS as `0x${string}`,
+      abi: PREDICTION_ABI,
+      functionName: 'correctPredictions',
+      args: [],
     });
     return Number(result);
   } catch (err) {
@@ -57,10 +50,11 @@ export async function getOnChainCorrectPredictions(): Promise<number> {
 
 export async function getOnChainAccuracy(): Promise<number> {
   try {
-    const result = await readContract({
-      contract: predictionContract,
-      method: "function getAgentAccuracy() view returns (uint256)",
-      params: [],
+    const result = await publicClient.readContract({
+      address: PREDICTION_CONTRACT_ADDRESS as `0x${string}`,
+      abi: PREDICTION_ABI,
+      functionName: 'getAgentAccuracy',
+      args: [],
     });
     return Number(result);
   } catch (err) {
@@ -71,12 +65,13 @@ export async function getOnChainAccuracy(): Promise<number> {
 
 export async function getOnChainTotalStaked(): Promise<bigint> {
   try {
-    const result = await readContract({
-      contract: predictionContract,
-      method: "function totalStaked() view returns (uint256)",
-      params: [],
+    const result = await publicClient.readContract({
+      address: PREDICTION_CONTRACT_ADDRESS as `0x${string}`,
+      abi: PREDICTION_ABI,
+      functionName: 'totalStaked',
+      args: [],
     });
-    return result;
+    return result as bigint;
   } catch (err) {
     console.warn("[blockchain] totalStaked failed:", err);
     return 0n;
@@ -93,17 +88,18 @@ export interface AgentProfile {
 
 export async function getAgentProfile(): Promise<AgentProfile | null> {
   try {
-    const result = await readContract({
-      contract: agentWalletContract,
-      method: "function getProfile() view returns ((bytes32 agentId, string name, string metadataURI, uint256 createdAt, bool active))",
-      params: [],
+    const result = await publicClient.readContract({
+      address: AGENT_WALLET_ADDRESS as `0x${string}`,
+      abi: AGENT_WALLET_ABI,
+      functionName: 'getProfile',
+      args: [],
     });
     return {
-      agentId: result.agentId as string,
-      name: result.name,
-      metadataURI: result.metadataURI,
-      createdAt: Number(result.createdAt),
-      active: result.active,
+      agentId: (result as any).agentId as string,
+      name: (result as any).name,
+      metadataURI: (result as any).metadataURI,
+      createdAt: Number((result as any).createdAt),
+      active: (result as any).active,
     };
   } catch (err) {
     console.warn("[blockchain] getProfile failed:", err);
@@ -121,17 +117,18 @@ export interface AgentReputation {
 
 export async function getAgentReputation(): Promise<AgentReputation | null> {
   try {
-    const result = await readContract({
-      contract: agentWalletContract,
-      method: "function getReputation() view returns ((uint256 totalPredictions, uint256 correctPredictions, uint256 totalStaked, uint256 reputationScore, uint256 lastUpdated))",
-      params: [],
+    const result = await publicClient.readContract({
+      address: AGENT_WALLET_ADDRESS as `0x${string}`,
+      abi: AGENT_WALLET_ABI,
+      functionName: 'getReputation',
+      args: [],
     });
     return {
-      totalPredictions: Number(result.totalPredictions),
-      correctPredictions: Number(result.correctPredictions),
-      totalStaked: result.totalStaked,
-      reputationScore: Number(result.reputationScore),
-      lastUpdated: Number(result.lastUpdated),
+      totalPredictions: Number((result as any).totalPredictions),
+      correctPredictions: Number((result as any).correctPredictions),
+      totalStaked: BigInt((result as any).totalStaked),
+      reputationScore: Number((result as any).reputationScore),
+      lastUpdated: Number((result as any).lastUpdated),
     };
   } catch (err) {
     console.warn("[blockchain] getReputation failed:", err);
