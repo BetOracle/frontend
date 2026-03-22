@@ -28,6 +28,8 @@ export interface ApiPrediction {
   predictionId: string;
   matchId: string;
   prediction: "HOME_WIN" | "DRAW" | "AWAY_WIN";
+  homeTeam?: string;
+  awayTeam?: string;
   confidence: number;        // 0..1 float
   factors?: {
     formScore?: number;

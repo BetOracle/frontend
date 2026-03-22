@@ -25,8 +25,8 @@ function apiToFrontend(p: api.ApiPrediction): Prediction {
     id: p.predictionId,
     match: {
       id: p.matchId,
-      homeTeam: '—',
-      awayTeam: '—',
+      homeTeam: p.homeTeam || '—',
+      awayTeam: p.awayTeam || '—',
       league,
       kickoffTime: new Date(p.timestamp * 1000).toISOString(),
     },
