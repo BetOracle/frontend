@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Copy, ExternalLink, LogOut, Save } from 'lucide-react';
-import { CELOSCAN_URL } from '@/data/mockData';
+import { CELOSCAN_URL } from '@/config/contracts';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { useDisconnect, useActiveWallet } from 'thirdweb/react';
@@ -19,7 +19,7 @@ export default function SettingsPage() {
   const { walletAddress, walletConnected, tier, tokenBalance } = useStore();
   const navigate = useNavigate();
   const { disconnect } = useDisconnect();
-  const activeWallet = useActiveWallet();
+  const wallet = useActiveWallet();
   const isGold = tier === 'gold';
 
   const [emailEnabled, setEmailEnabled] = useState(false);
@@ -218,7 +218,7 @@ export default function SettingsPage() {
           <Button
             variant="destructive"
             onClick={() => {
-              if (activeWallet) disconnect(activeWallet);
+              if (wallet) disconnect(wallet);
               navigate('/');
             }}
           >
