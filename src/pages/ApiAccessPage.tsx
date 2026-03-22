@@ -8,9 +8,6 @@ import { Progress } from '@/components/ui/progress';
 import { Copy, Eye, EyeOff, RefreshCw, ExternalLink, Key, Shield, BookOpen, Code } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { TIER_REQUIREMENTS } from '@/data/mockData';
-
-const mockApiKey = 'oracle_sk_live_7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d';
 
 const endpoints = [
   {
@@ -55,7 +52,7 @@ export default function ApiAccessPage() {
           </div>
           <h1 className="text-3xl font-bold text-foreground mb-4">Gold Tier Required</h1>
           <p className="text-muted-foreground mb-8">
-            API access requires {TIER_REQUIREMENTS.gold.toLocaleString()} ORACLE tokens (Gold tier).
+            API access is restricted to Gold tier.
           </p>
           <Button onClick={() => navigate('/token')} className="gradient-primary text-primary-foreground">
             View Token Info
@@ -66,15 +63,14 @@ export default function ApiAccessPage() {
   }
 
   const copyKey = () => {
-    navigator.clipboard.writeText(mockApiKey);
-    toast({ title: 'Copied', description: 'API key copied to clipboard' });
+    toast({ title: 'Unavailable', description: 'API key issuance is not available from the backend yet.' });
   };
 
   return (
     <div className="container mx-auto px-4 py-8 md:py-12 max-w-3xl">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground mb-2">API Access</h1>
-        <p className="text-muted-foreground mb-8">Integrate FootyOracle predictions into your apps</p>
+          <p className="text-muted-foreground mt-2">Integrate BetOracle's predictive model directly into your own applications.</p>
 
         {/* API Key */}
         <Card className="p-6 bg-card border-border mb-6">
@@ -88,7 +84,7 @@ export default function ApiAccessPage() {
 
           <div className="flex items-center gap-2 mb-3">
             <code className="flex-1 text-sm font-mono bg-background p-3 rounded border border-border text-muted-foreground">
-              {showKey ? mockApiKey : '•'.repeat(40)}
+              {'Not available'}
             </code>
             <Button variant="ghost" size="icon" onClick={() => setShowKey(!showKey)} className="h-10 w-10 shrink-0">
               {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -98,7 +94,7 @@ export default function ApiAccessPage() {
             </Button>
           </div>
 
-          <Button variant="outline" size="sm" className="border-border">
+          <Button variant="outline" size="sm" className="border-border" disabled>
             <RefreshCw size={14} className="mr-2" />
             Regenerate Key
           </Button>
