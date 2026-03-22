@@ -1,5 +1,5 @@
 // ============================================================
-// API Service — typed wrappers for the FootyOracle backend
+// API Service — typed wrappers for the BetOracle backend
 // ============================================================
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "https://web-production-34305.up.railway.app";
@@ -27,8 +27,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface ApiPrediction {
   predictionId: string;
   matchId: string;
-  prediction: "HOME_WIN" | "DRAW" | "AWAY_WIN";
+  prediction: "HOME_WIN" | "DRAW" | "AWAY_WIN" | null;
   confidence: number;        // 0..1 float
+  edge?: number;
+  marketOdds?: { home: number; draw: number; away: number };
+  trueProbabilities?: { home: number; draw: number; away: number };
   factors?: {
     formScore?: number;
     injuryImpact?: number;

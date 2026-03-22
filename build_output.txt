@@ -1,0 +1,41 @@
+
+> vite_react_shadcn_ts@0.0.0 build
+> vite build
+
+[36mvite v5.4.19 [32mbuilding for production...[36m[39m
+transforming...
+Browserslist: browsers data (caniuse-lite) is 9 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[33m[vite:css] @import must precede all other statements (besides @charset or empty @layer)
+3  |  @tailwind utilities;
+4  |  
+5  |  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6  |  
+7  |  @layer base {[39m
+[32m✓[39m 169 modules transformed.
+[31mx[39m Build failed in 24.94s
+[31merror during build:
+[31m[vite:esbuild] Transform failed with 1 error:
+C:/Users/USER/footyracle/src/store/useStore.ts:65:0: ERROR: Unexpected "}"[31m
+file: [36mC:/Users/USER/footyracle/src/store/useStore.ts:65:0[31m
+[33m
+[33mUnexpected "}"[33m
+63 |        : undefined,
+64 |    };
+65 |  }
+   |  ^
+66 |  
+67 |  const emptyStats: AppStats = {
+[31m
+    at failureErrorWithLog (C:\Users\USER\footyracle\node_modules\esbuild\lib\main.js:1472:15)
+    at C:\Users\USER\footyracle\node_modules\esbuild\lib\main.js:755:50
+    at responseCallbacks.<computed> (C:\Users\USER\footyracle\node_modules\esbuild\lib\main.js:622:9)
+    at handleIncomingPacket (C:\Users\USER\footyracle\node_modules\esbuild\lib\main.js:677:12)
+    at Socket.readFromStdout (C:\Users\USER\footyracle\node_modules\esbuild\lib\main.js:600:7)
+    at Socket.emit (node:events:518:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m

@@ -1,0 +1,199 @@
+
+> vite_react_shadcn_ts@0.0.0 build
+> vite build
+
+[36mvite v5.4.19 [32mbuilding for production...[36m[39m
+transforming...
+Browserslist: browsers data (caniuse-lite) is 9 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[33m[vite:css] @import must precede all other statements (besides @charset or empty @layer)
+3  |  @tailwind utilities;
+4  |  
+5  |  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6  |  
+7  |  @layer base {[39m
+node_modules/thirdweb/dist/esm/react/web/ui/ConnectWallet/Details.js (440:0): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/ConnectWallet/Details.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/components/basic.js (19:27): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/components/basic.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (2:25): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (3:25): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (4:26): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (5:28): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (6:28): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (7:27): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (8:27): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (9:24): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (10:23): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (11:24): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (12:28): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js (13:28): A comment
+
+"/* @__PURE__ */"
+
+in "node_modules/thirdweb/dist/esm/react/web/ui/design-system/elements.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/ox/_esm/core/Address.js (6:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/ox/_esm/core/Base64.js (6:27): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Address.js (6:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/porto/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/porto/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@base-org/account/node_modules/ox/_esm/core/Address.js (6:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@base-org/account/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@base-org/account/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@base-org/account/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@wagmi/connectors/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@wagmi/connectors/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@base-org/account/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@base-org/account/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@walletconnect/ethereum-provider/node_modules/ox/_esm/core/Address.js (6:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@walletconnect/ethereum-provider/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@walletconnect/ethereum-provider/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@walletconnect/ethereum-provider/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@walletconnect/utils/node_modules/ox/_esm/core/Address.js (6:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@walletconnect/utils/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@walletconnect/utils/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@walletconnect/utils/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@reown/appkit/node_modules/ox/_esm/core/Address.js (6:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@reown/appkit/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@reown/appkit/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@reown/appkit/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/Address.js (6:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@reown/appkit-controllers/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+[32m✓[39m 11641 modules transformed.
+[31mx[39m Build failed in 1m 2s
+[31merror during build:
+[31msrc/components/WalletButton.tsx (5:9): "CELO_CUSD_ADDRESS" is not exported by "src/config/contracts.ts", imported by "src/components/WalletButton.tsx".[31m
+file: [36mC:/Users/USER/footyracle/src/components/WalletButton.tsx:5:9[31m
+[33m
+3: import { Button } from '@/components/ui/button';
+4: import { Wallet } from 'lucide-react';
+5: import { CELO_CUSD_ADDRESS } from '@/config/contracts';
+            ^
+6: 
+7: export function WalletButton() {
+[31m
+    at getRollupError (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/parseAst.js:395:41)
+    at error (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/parseAst.js:391:42)
+    at Module.error (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:15535:16)
+    at Module.traceVariable (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:15984:29)
+    at ModuleScope.findVariable (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:13770:39)
+    at FunctionScope.findVariable (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:5252:38)
+    at FunctionBodyScope.findVariable (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:5252:38)
+    at Identifier.bind (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:5035:40)
+    at Property.bind (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:2855:23)
+    at ObjectExpression.bind (file:///C:/Users/USER/footyracle/node_modules/rollup/dist/es/shared/node-entry.js:2851:28)[39m

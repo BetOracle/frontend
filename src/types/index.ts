@@ -15,10 +15,16 @@ export interface Match {
 }
 
 export interface PredictionData {
-  outcome: PredictionOutcome;
+  hasValueBet?: boolean;
+  outcome?: PredictionOutcome;
   confidence: number;
   edge: number;
   marketOdds?: {
+    home: number;
+    draw: number;
+    away: number;
+  };
+  trueProbabilities?: {
     home: number;
     draw: number;
     away: number;

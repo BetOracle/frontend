@@ -7,13 +7,12 @@ import {
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ConfidenceBar } from './ConfidenceBar';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceStrict } from 'date-fns';
-import { Copy, ExternalLink, Share2, CheckCircle, Clock, Trophy, ShieldCheck, Scale, Cpu } from 'lucide-react';
+import { Copy, ExternalLink, Share2, CheckCircle, Clock, ShieldCheck, Cpu } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { CELOSCAN_URL } from '@/data/mockData';
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { CELOSCAN_URL } from '@/config/contracts';
+import { getFactorText } from '@/utils/formatters';
 
 interface PredictionDetailModalProps {
   prediction: Prediction | null;
@@ -22,12 +21,12 @@ interface PredictionDetailModalProps {
 }
 
 const outcomeLabel: Record<PredictionOutcome, string> = {
-  home_win: 'HOME WIN',
-  draw: 'DRAW',
-  away_win: 'AWAY WIN',
+  home_win: 'Home Win',
+  draw: 'Draw',
+  away_win: 'Away Win',
 };
 
-function getOutcomeColor(outcome: PredictionOutcome) {
+function getOutcomeColor(outcome: PredictionOutcome | undefined) {
   switch (outcome) {
     case 'home_win': return 'text-success';
     case 'away_win': return 'text-info';
@@ -55,34 +54,41 @@ export function PredictionDetailModal({ prediction, open, onClose }: PredictionD
   };
 
   const handleShare = () => {
-    const text = `⚽ BetOracle Agent: ${match.homeTeam} vs ${match.awayTeam}\n📊 Pick: ${outcomeLabel[pred.outcome]} (${pred.confidence}% conf)\n${isResolved ? `Result: ${result.score} ${isWin ? '✅ WIN' : '❌ LOSS'}` : '⏳ Pending'}\n\nVerified on-chain on Celo`;
+    const text = `⚽ BetOracle Agent: ${match.homeTeam} vs ${match.awayTeam}\n📊 Pick: ${pred.outcome ? outcomeLabel[pred.outcome] : 'N/A'} (${pred.confidence}% sure)\n${isResolved ? `Result: ${result.score} ${isWin ? '✅ WIN' : '❌ LOSS'}` : '⏳ Not Played Yet'}\n\nVerified on Celo`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  // Prepare radar chart data
-  const radarData = modelFactors?.map(f => ({
-    subject: f.name.replace('Score', '').replace('Impact', '').trim(),
-    score: Math.max(0, (f.score + 1) * 50), // Scale -1..1 to 0..100
-  })) || [];
-
-  // Prepare probability data
-  const barData = pred.marketOdds && pred.trueProbabilities ? [
+  const hasEdge = pred.hasValueBet;
+  
+  // Highlight the biggest gap logic
+  let maxGap = -Infinity;
+  let gapWinnerLabel = '';
+  
+  const compData = pred.marketOdds && pred.trueProbabilities ? [
     {
-      name: 'Home',
-      Market: Math.round((1 / pred.marketOdds.home) * 100),
-      Model: Math.round(pred.trueProbabilities.home * 100)
+      label: 'HOME WIN',
+      model: Math.round(pred.trueProbabilities.home * 100),
+      market: Math.round((1 / pred.marketOdds.home) * 100)
     },
     {
-      name: 'Draw',
-      Market: Math.round((1 / pred.marketOdds.draw) * 100),
-      Model: Math.round(pred.trueProbabilities.draw * 100)
+      label: 'DRAW',
+      model: Math.round(pred.trueProbabilities.draw * 100),
+      market: Math.round((1 / pred.marketOdds.draw) * 100)
     },
     {
-      name: 'Away',
-      Market: Math.round((1 / pred.marketOdds.away) * 100),
-      Model: Math.round(pred.trueProbabilities.away * 100)
+      label: 'AWAY WIN',
+      model: Math.round(pred.trueProbabilities.away * 100),
+      market: Math.round((1 / pred.marketOdds.away) * 100)
     }
   ] : [];
+
+  compData.forEach(d => {
+    const spread = d.model - d.market;
+    if (spread > maxGap) {
+      maxGap = spread;
+      gapWinnerLabel = d.label;
+    }
+  });
 
   return (
     <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
@@ -118,16 +124,15 @@ export function PredictionDetailModal({ prediction, open, onClose }: PredictionD
           
           {/* Main Prediction Highlight */}
           <div className="p-5 rounded-2xl glass-card relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+            {hasEdge && <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />}
             <div className="flex items-center justify-between mb-4 relative">
               <div>
                 <p className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-2">
-                   <Cpu size={14} /> AI Recommendation
+                   <Cpu size={14} /> {hasEdge ? "Our Pick" : "Pass / No Pick"}
                 </p>
                 <div className="flex items-baseline gap-3">
-                  <p className={cn("text-3xl font-bold flex items-center gap-2", getOutcomeColor(pred.outcome))}>
-                    <Trophy size={24} />
-                    {outcomeLabel[pred.outcome]}
+                  <p className={cn("text-3xl font-bold flex items-center gap-2", hasEdge ? getOutcomeColor(pred.outcome) : 'text-muted-foreground')}>
+                    {hasEdge ? outcomeLabel[pred.outcome!] : 'Fairly Priced'}
                   </p>
                 </div>
               </div>
@@ -136,130 +141,115 @@ export function PredictionDetailModal({ prediction, open, onClose }: PredictionD
                 {isResolved ? (
                   <Badge className={cn(
                     'text-base px-3 py-1 font-bold',
-                    isWin ? 'bg-success text-success-foreground' : 'bg-destructive text-destructive-foreground',
+                    isWin ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground',
                   )}>
-                    {isWin ? '✓ CORRECT' : '✗ INCORRECT'}
+                    {isWin ? '✓ WON' : '✗ LOST'}
                   </Badge>
+                ) : hasEdge ? (
+                   <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5 text-sm">
+                      +{pred.edge.toFixed(1)}% Our Advantage
+                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5 text-sm">
-                     + {pred.edge.toFixed(1)}% Edge
-                  </Badge>
+                   <Badge variant="outline" className="border-white/10 text-muted-foreground bg-white/5 text-sm">
+                      No Advantage
+                   </Badge>
                 )}
               </div>
             </div>
 
-            <div className="mb-2 flex justify-between text-xs text-muted-foreground">
-               <span>Agent Confidence</span>
-               <span className="font-mono">{pred.confidence}%</span>
-            </div>
-            <ConfidenceBar confidence={pred.confidence} />
+            {hasEdge ? (
+              <div className="flex justify-between text-base text-foreground/90 mt-4 border-t border-white/5 pt-4">
+                 <span className="font-semibold">How sure we are:</span>
+                 <span className="font-bold text-success">{pred.confidence}%</span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground mt-4 border-t border-white/5 pt-4">
+                The bookmakers have this one fairly priced. No clear advantage found.
+              </p>
+            )}
           </div>
 
-          {/* Probability & Market Comparsion */}
-          {barData.length > 0 && pred.marketOdds && (
+          {/* Simple Probability Detail Strip */}
+          {compData.length > 0 && (
             <div>
                <h4 className="font-semibold gap-2 flex items-center text-foreground mb-4">
-                 <Scale size={18} className="text-primary" /> Probability vs Market Line
+                 What the numbers say
                </h4>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 
-                 {/* Bar Chart */}
-                 <div className="glass-card p-4 rounded-xl h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={barData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="name" tick={{fill: '#888', fontSize: 12}} axisLine={false} tickLine={false} />
-                        <YAxis tick={{fill: '#888', fontSize: 12}} axisLine={false} tickLine={false} />
-                        <Tooltip 
-                          cursor={{fill: 'rgba(255,255,255,0.05)'}} 
-                          contentStyle={{backgroundColor: '#0a0a0f', borderColor: '#333', fontSize: '12px'}} 
-                        />
-                        <Legend iconType="circle" wrapperStyle={{fontSize: '11px'}} />
-                        <Bar dataKey="Model" fill="#35D07F" radius={[4,4,0,0]} />
-                        <Bar dataKey="Market" fill="#4B5563" radius={[4,4,0,0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                 </div>
+               <div className="glass-card rounded-xl overflow-hidden p-6 font-mono text-sm">
+                  
+                  {/* Header Row */}
+                  <div className="grid grid-cols-4 gap-4 pb-3 mb-2 border-b border-white/10 text-muted-foreground font-semibold uppercase tracking-wider text-xs">
+                    <div className="col-span-1"></div>
+                    <div className="col-span-1 text-center">Home Win</div>
+                    <div className="col-span-1 text-center">Draw</div>
+                    <div className="col-span-1 text-center">Away Win</div>
+                  </div>
 
-                 {/* Comparison Table */}
-                 <div className="glass-card rounded-xl overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-white/5 text-muted-foreground text-xs uppercase">
-                        <tr>
-                          <th className="px-4 py-3 font-semibold">Outcome</th>
-                          <th className="px-4 py-3 font-semibold text-right">Odds</th>
-                          <th className="px-4 py-3 font-semibold text-right">Market %</th>
-                          <th className="px-4 py-3 font-semibold text-right text-primary">Model %</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {barData.map((d) => {
-                           const odds = d.name === 'Home' ? pred.marketOdds!.home : d.name === 'Draw' ? pred.marketOdds!.draw : pred.marketOdds!.away;
-                           return (
-                             <tr key={d.name} className="hover:bg-white/5 transition-colors">
-                               <td className="px-4 py-3 font-medium text-foreground">{d.name}</td>
-                               <td className="px-4 py-3 text-right font-mono">{odds.toFixed(2)}</td>
-                               <td className="px-4 py-3 text-right font-mono text-muted-foreground">{d.Market}%</td>
-                               <td className="px-4 py-3 text-right font-mono text-primary font-bold">{d.Model}%</td>
-                             </tr>
-                           )
-                        })}
-                      </tbody>
-                    </table>
-                    
-                    <div className="p-4 border-t border-white/5 bg-primary/5 text-xs text-muted-foreground leading-relaxed">
-                       Our AI model calculates the true probability of each outcome. The <span className="text-primary font-semibold text-foreground">Edge</span> is identified when the Model probability is significantly higher than the Market implied probability.
+                  {/* Our model */}
+                  <div className="grid grid-cols-4 gap-4 py-2">
+                    <div className="col-span-1 text-muted-foreground">What We Think</div>
+                    {compData.map(d => (
+                       <div key={d.label + '_model'} className="col-span-1 text-center text-foreground font-bold">
+                         {d.model}%
+                       </div>
+                    ))}
+                  </div>
+
+                  {/* Bookmakers */}
+                  <div className="grid grid-cols-4 gap-4 py-2 opacity-70">
+                    <div className="col-span-1 text-muted-foreground">Bookmakers</div>
+                    {compData.map(d => (
+                       <div key={d.label + '_market'} className="col-span-1 text-center">
+                         {d.market}%
+                       </div>
+                    ))}
+                  </div>
+
+                  {/* Difference */}
+                  <div className="grid grid-cols-4 gap-4 py-3 mt-2 border-t border-white/5">
+                    <div className="col-span-1 text-muted-foreground">Difference</div>
+                    {compData.map(d => {
+                       const spread = d.model - d.market;
+                       const isBiggest = d.label === gapWinnerLabel && hasEdge;
+                       return (
+                         <div key={d.label + '_diff'} className="col-span-1 text-center">
+                           <span className={cn(
+                             "px-2 py-1 rounded",
+                             isBiggest ? "bg-success/20 text-success font-bold" : "text-muted-foreground"
+                           )}>
+                             {spread > 0 ? '+' : ''}{spread}%
+                           </span>
+                         </div>
+                       )
+                    })}
+                  </div>
+
+                  {hasEdge && (
+                    <div className="mt-4 text-center text-xs text-muted-foreground italic tracking-wide">
+                      "The bigger the gap, the stronger our pick"
                     </div>
-                 </div>
+                  )}
                </div>
             </div>
           )}
 
-          {/* Factor Radar Chart & Breakdown */}
+          {/* Plain Human Readable Breakdown */}
           {modelFactors && modelFactors.length > 0 && (
              <div>
-                <h4 className="font-semibold gap-2 flex items-center text-foreground mb-4">
-                  <BrainIcon size={18} className="text-primary" /> AI Factor Analysis
+                <h4 className="font-semibold text-foreground mb-4">
+                  Why we're looking at this match:
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                  
-                  {/* Radar Chart */}
-                  <div className="glass-card rounded-xl h-64 flex items-center justify-center">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart cx="50%" cy="50%" outerRadius="65%" data={radarData}>
-                        <PolarGrid stroke="rgba(255,255,255,0.1)" />
-                        <PolarAngleAxis dataKey="subject" tick={{fill: '#888', fontSize: 10}} />
-                        <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                        <Radar name="Score" dataKey="score" stroke="#35D07F" fill="#35D07F" fillOpacity={0.3} />
-                        <Tooltip 
-                            contentStyle={{backgroundColor: '#0a0a0f', borderColor: '#333', fontSize: '12px'}} 
-                            formatter={(value: number) => [`${value.toFixed(0)}/100`, 'Score']}
-                        />
-                      </RadarChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  {/* AI Reasoning List */}
-                  <div className="space-y-3">
-                     {modelFactors.map((factor, i) => (
-                       <div key={i} className="p-3 rounded-lg bg-black/20 border border-white/5">
-                         <div className="flex items-center justify-between mb-1">
-                           <span className="text-sm font-semibold text-foreground">
-                             {factor.name}
-                           </span>
-                           <span className={cn(
-                              "text-xs px-2 py-0.5 rounded",
-                              factor.score >= 0 ? "bg-success/20 text-success" : "bg-destructive/20 text-destructive"
-                           )}>
-                              {factor.score > 0 ? 'Advantage' : 'Disadvantage'}
-                           </span>
-                         </div>
-                         <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                            {factor.reasoning || `${factor.score > 0 ? 'Positive' : 'Negative'} impact computed by the model based on historical datasets and current lineup conditions.`}
-                         </p>
-                       </div>
-                     ))}
-                  </div>
-
+                <div className="glass-card rounded-xl p-6">
+                  <ul className="space-y-4 list-none m-0 p-0 text-foreground/90">
+                    {modelFactors.map((factor, i) => (
+                      <li key={i} className="flex gap-4">
+                        <span className="text-primary mt-1">•</span>
+                        <div className="flex-1 text-sm leading-relaxed">
+                          {getFactorText(factor.name, factor.score)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
              </div>
           )}
@@ -310,31 +300,4 @@ export function PredictionDetailModal({ prediction, open, onClose }: PredictionD
       </SheetContent>
     </Sheet>
   );
-}
-
-function BrainIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
-      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
-      <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
-      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
-      <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
-      <path d="M19.938 10.5a4 4 0 0 1 .585.396" />
-      <path d="M6 18a4 4 0 0 1-1.967-.516" />
-      <path d="M19.967 17.484A4 4 0 0 1 18 18" />
-    </svg>
-  )
 }
