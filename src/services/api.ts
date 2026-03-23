@@ -51,9 +51,10 @@ const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
 // All regular requests (matches, predictions, stats) use 60s so they survive cold-starts.
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 60_000);
 
-// POST /api/predict runs an AI pipeline that Railway drops at ~30s.
-// We fire-and-forget this and poll for the result, so 28s is enough.
-const PREDICT_TIMEOUT_MS = 28_000;
+// POST /api/predict: raise timeout to 90s so the browser waits as long as possible.
+// Railway may drop the TCP connection before this fires — that is fine,
+// the poll fallback in MatchesPage will catch the result regardless.
+const PREDICT_TIMEOUT_MS = 90_000;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`;

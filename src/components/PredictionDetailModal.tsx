@@ -128,11 +128,11 @@ export function PredictionDetailModal({ prediction, open, onClose }: PredictionD
             <div className="flex items-center justify-between mb-4 relative">
               <div>
                 <p className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-1 flex items-center gap-2">
-                   <Cpu size={14} /> {hasEdge ? "Our Pick" : "Pass / No Pick"}
+                   <Cpu size={14} /> {hasEdge ? "Our Prediction" : "Pass / No Pick"}
                 </p>
                 <div className="flex items-baseline gap-3">
                   <p className={cn("text-3xl font-bold flex items-center gap-2", hasEdge ? getOutcomeColor(pred.outcome) : 'text-muted-foreground')}>
-                    {hasEdge ? `Outcome: ${outcomeLabel[pred.outcome!]}` : 'Fairly Priced'}
+                    {hasEdge ? outcomeLabel[pred.outcome!] : 'Fairly Priced'}
                   </p>
                 </div>
               </div>

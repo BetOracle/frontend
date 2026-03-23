@@ -25,18 +25,8 @@ export function useSmartRefresh() {
     // 6 hours = 21600000 ms (Reduced from 15m to better match user requirement for ~4x daily refresh)
     const intervalId = setInterval(tick, 21600000);
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        // When user comes back to tab, do a background check
-        tick();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('scroll', updateInteraction);
       window.removeEventListener('click', updateInteraction);
       window.removeEventListener('keydown', updateInteraction);

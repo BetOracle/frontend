@@ -20,9 +20,11 @@ type FilterType = 'All' | League;
 // Fetch up to 60 days ahead — no artificial cutoff, show all available fixtures
 const DAYS_AHEAD = 60;
 
+// Poll starts 5s after request fires, checks every 5s, gives up after 150s.
+// 150s > 90s predict timeout so the poll always outlasts the direct request.
 const POLL_INTERVAL_MS = 5_000;
-const POLL_TIMEOUT_MS = 120_000;
-const POLL_INITIAL_DELAY_MS = 4_000;
+const POLL_TIMEOUT_MS = 150_000;
+const POLL_INITIAL_DELAY_MS = 5_000;
 
 // ── Card-level persistent prediction store (survives page refresh) ───────────
 
@@ -343,8 +345,9 @@ export default function MatchesPage() {
       .catch((err: any) => {
         const msg = err?.message ?? '';
 
-        // AbortError (28s timeout): Railway dropped the connection but the backend
-        // is still running. The poll will catch the result — do nothing here.
+        // AbortError (90s timeout): our AbortController fired or Railway dropped the
+        // connection. Either way the backend keeps running — poll will catch the result.
+
         if (msg.includes('took too long')) return;
 
         // 500 backend errors (e.g. "Error fetching form: No matches returned"):
@@ -448,6 +451,9 @@ export default function MatchesPage() {
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">All Analyzed Matches</h1>
+            <p className="text-muted-foreground mt-1 text-balance">
+              All upcoming fixtures from the backend. Predictions persist on each card after analysis.
+            </p>
           </div>
 
           {/* League filter pills */}
