@@ -17,14 +17,14 @@ const ALL_LEAGUES = ['EPL', 'LaLiga', 'Bundesliga', 'Ligue1', 'SerieA'] as const
 type League = typeof ALL_LEAGUES[number];
 type FilterType = 'All' | League;
 
-// Fetch 14 days ahead so we always have a meaningful fixture list
-const DAYS_AHEAD = 14;
+// Fetch up to 60 days ahead — no artificial cutoff, show all available fixtures
+const DAYS_AHEAD = 60;
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 120_000;
 const POLL_INITIAL_DELAY_MS = 4_000;
 
-// ── Card-level persistent prediction store ────────────────────────────────────
+// ── Card-level persistent prediction store (survives page refresh) ───────────
 
 interface CardPrediction {
   outcome: string | null;
@@ -35,7 +35,35 @@ interface CardPrediction {
   predictionId?: string;
   txHash?: string;
 }
-const cardPredictionStore = new Map<number, CardPrediction>();
+
+const STORAGE_KEY = 'betoracle_card_predictions';
+
+// Load from localStorage on module init.
+// JSON serialises Map keys as strings — we must convert back to number on load.
+function loadCardPredictions(): Map<number, CardPrediction> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return new Map();
+    const entries = JSON.parse(raw) as [string | number, CardPrediction][];
+    // Ensure keys are numbers so cardPredictionStore.get(fixtureId) always hits
+    return new Map(entries.map(([k, v]) => [Number(k), v]));
+  } catch {
+    return new Map();
+  }
+}
+
+function saveCardPredictions(store: Map<number, CardPrediction>) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...store.entries()]));
+  } catch { /* storage full or unavailable — fail silently */ }
+}
+
+const cardPredictionStore = loadCardPredictions();
+
+function setCardPrediction(fixtureId: number, pred: CardPrediction) {
+  cardPredictionStore.set(fixtureId, pred);
+  saveCardPredictions(cardPredictionStore);
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -160,17 +188,28 @@ export default function MatchesPage() {
         filter === 'All' ? [...ALL_LEAGUES] : [filter as League];
 
       try {
-        // Fetch all leagues in parallel, 14 days ahead
-        const responses = await Promise.all(
-          leaguesToFetch.map(league =>
-            api.fetchMatches(league, DAYS_AHEAD)
-              .then(res => ({ league, matches: res.matches ?? [], ok: true }))
-              .catch(err => {
-                console.warn(`[MatchesPage] ${league} failed:`, err?.message);
-                return { league, matches: [] as api.ApiMatch[], ok: false };
-              })
-          )
-        );
+        // Fetch each league with escalating daysAhead windows.
+        // Some leagues (e.g. EPL) have gaps of 19+ days between rounds
+        // due to international breaks or cup weeks. We try 60 → 90 → default
+        // so empty results from a narrow window don't show "no fixtures".
+        const fetchLeague = async (league: League) => {
+          for (const days of [DAYS_AHEAD, 90, undefined] as const) {
+            try {
+              const res = await api.fetchMatches(league, days as number | undefined);
+              const matches = res.matches ?? [];
+              if (matches.length > 0 || days === undefined) {
+                return { league, matches, ok: true };
+              }
+              console.log(`[MatchesPage] ${league} empty at daysAhead=${days}, widening window...`);
+            } catch (err: any) {
+              console.warn(`[MatchesPage] ${league} error at daysAhead=${days}:`, err?.message);
+              if (days === undefined) return { league, matches: [] as api.ApiMatch[], ok: false };
+            }
+          }
+          return { league, matches: [] as api.ApiMatch[], ok: true };
+        };
+
+        const responses = await Promise.all(leaguesToFetch.map(fetchLeague));
 
         if (cancelled) return;
 
@@ -179,7 +218,6 @@ export default function MatchesPage() {
         responses.forEach(({ league, matches: leagueMatches }) => {
           leagueMatches.forEach(m => {
             allMatches.push({ ...m, _league: league });
-            // Pre-warm team name cache
             cacheMatchMeta(`${league}-${m.fixtureId}`, {
               homeTeam: m.homeTeam,
               awayTeam: m.awayTeam,
@@ -189,8 +227,7 @@ export default function MatchesPage() {
           });
         });
 
-        const allFailed = responses.every(r => !r.ok);
-        if (allFailed) {
+        if (responses.every(r => !r.ok)) {
           setError('Could not reach the backend. Please try again in a moment.');
         }
 
@@ -221,7 +258,49 @@ export default function MatchesPage() {
 
     addAnalyzing(m.fixtureId);
 
-    // Fire and forget — backend keeps running even after Railway drops connection
+    // Shared helper — called from both the direct response AND the poll,
+    // whichever resolves first. `pollCancelled` stops the poll if direct wins.
+    let pollCancelled = false;
+
+    const applyResult = (
+      prediction: string | null,
+      confidence: number | null,
+      edge: number | null,
+      predictionId?: string,
+      txHash?: string,
+    ) => {
+      if (cardPredictionStore.has(m.fixtureId)) return; // already applied
+      pollCancelled = true;
+
+      setCardPrediction(m.fixtureId, {
+        outcome: prediction,
+        confidence,
+        edge,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        predictionId,
+        txHash,
+      });
+
+      removeAnalyzing(m.fixtureId);
+      bumpVersion();
+      fetchPredictions();
+
+      const label =
+        prediction === 'HOME_WIN' ? `${m.homeTeam} Win` :
+          prediction === 'AWAY_WIN' ? `${m.awayTeam} Win` :
+            prediction === 'DRAW' ? 'Draw' : 'No Value Bet';
+
+      toast({
+        title: '✅ Prediction Ready',
+        description: `${m.homeTeam} vs ${m.awayTeam}: ${label}${confidence != null ? ` at ${confidence}% confidence` : ''
+          }.`,
+      });
+    };
+
+    // ── Direct request ─────────────────────────────────────────────────────
+    // Some leagues return immediately (cached prediction). Others take 30-60s
+    // and Railway drops the connection — the poll fallback catches those.
     api.createPrediction({
       homeTeam: m.homeTeam,
       awayTeam: m.awayTeam,
@@ -230,23 +309,50 @@ export default function MatchesPage() {
       date: m.date,
     })
       .then(res => {
-        if (res?.predictionId && res?.blockchain?.txHash) {
+        if (!res) return;
+
+        if (res.predictionId && res.blockchain?.txHash) {
           cachePredictionTx(res.predictionId, res.blockchain.txHash);
         }
-        if (res && !res.success && res.code === 'NO_VALUE_BET') {
-          removeAnalyzing(m.fixtureId);
-          cardPredictionStore.set(m.fixtureId, {
+
+        if (!res.success && res.code === 'NO_VALUE_BET') {
+          pollCancelled = true;
+          setCardPrediction(m.fixtureId, {
             outcome: null, confidence: null, edge: null,
             homeTeam: m.homeTeam, awayTeam: m.awayTeam,
           });
+          removeAnalyzing(m.fixtureId);
           bumpVersion();
-          setTimeout(() => fetchPredictions(), 1500);
+          setTimeout(() => fetchPredictions(), 1000);
+          toast({
+            title: 'No Value Bet Found',
+            description: `No clear mathematical edge for ${m.homeTeam} vs ${m.awayTeam}.`,
+          });
+          return;
+        }
+
+        if (res.success && res.prediction) {
+          // Fast cached response — apply immediately, cancel poll
+          const confidencePct = res.confidence != null
+            ? Math.round(res.confidence <= 1 ? res.confidence * 100 : res.confidence)
+            : null;
+          const edgeVal = res.edge != null ? Math.round(res.edge * 10) / 10 : null;
+          applyResult(res.prediction, confidencePct, edgeVal, res.predictionId, res.blockchain?.txHash ?? undefined);
         }
       })
       .catch((err: any) => {
-        if (!err?.message?.includes('took too long')) {
-          console.warn('[MatchesPage] predict error:', err?.message);
-        }
+        const msg = err?.message ?? '';
+
+        // AbortError (28s timeout): Railway dropped the connection but the backend
+        // is still running. The poll will catch the result — do nothing here.
+        if (msg.includes('took too long')) return;
+
+        // 500 backend errors (e.g. "Error fetching form: No matches returned"):
+        // The backend pipeline failed for this team's data. However the backend
+        // may still write a partial prediction to the DB, OR the user can retry.
+        // Keep the poll running — it will find the result if one gets stored.
+        // Just log and let the poll's own timeout handle the failure case.
+        console.warn('[MatchesPage] predict error:', msg);
       });
 
     toast({
@@ -254,20 +360,30 @@ export default function MatchesPage() {
       description: `Analyzing ${m.homeTeam} vs ${m.awayTeam}. Result will appear on the card when ready.`,
     });
 
-    // Poll until the prediction appears — backend matchId starts with {league}-{fixtureId}
+    // ── Poll fallback ──────────────────────────────────────────────────────
+    // Fires 4s after request, checks every 5s. Stops as soon as pollCancelled.
     const matchIdPrefix = `${league}-${m.fixtureId}`;
     const started = Date.now();
     let pollCount = 0;
 
     const poll = async (): Promise<void> => {
+      // Always check first — direct response or error may have resolved this
+      if (pollCancelled) return;
+
       pollCount++;
+
+      // Timeout check — also guards against the case where applyResult ran
+      // just before this tick fired (pollCancelled is checked again above)
       if (Date.now() - started > POLL_TIMEOUT_MS) {
-        removeAnalyzing(m.fixtureId);
-        toast({
-          title: 'Analysis Timed Out',
-          description: `Check the picks feed in a moment for ${m.homeTeam} vs ${m.awayTeam}.`,
-          variant: 'destructive',
-        });
+        if (!pollCancelled) {
+          pollCancelled = true;
+          removeAnalyzing(m.fixtureId);
+          toast({
+            title: 'Analysis Timed Out',
+            description: `The engine is still running. Check the picks feed in a moment.`,
+            variant: 'destructive',
+          });
+        }
         return;
       }
 
@@ -275,39 +391,12 @@ export default function MatchesPage() {
         const res = await api.fetchPredictions({ resolved: false, limit: 100 });
         const found = res.predictions.find(p => p.matchId.startsWith(matchIdPrefix));
 
-        if (found) {
-          // Extract team names from factors if available (API docs confirm they're stored there)
-          const factorsHome = found.factors?.homeTeam as string | undefined;
-          const factorsAway = found.factors?.awayTeam as string | undefined;
-
+        if (found && !pollCancelled) {
           const confidencePct = found.confidence != null
             ? Math.round(found.confidence <= 1 ? found.confidence * 100 : found.confidence)
             : null;
           const edgeVal = found.edge != null ? Math.round(found.edge * 10) / 10 : null;
-
-          cardPredictionStore.set(m.fixtureId, {
-            outcome: found.prediction ?? null,
-            confidence: confidencePct,
-            edge: edgeVal,
-            homeTeam: factorsHome ?? m.homeTeam,
-            awayTeam: factorsAway ?? m.awayTeam,
-            predictionId: found.predictionId,
-          });
-
-          removeAnalyzing(m.fixtureId);
-          bumpVersion();
-          await fetchPredictions();
-
-          const label =
-            found.prediction === 'HOME_WIN' ? `${m.homeTeam} Win` :
-              found.prediction === 'AWAY_WIN' ? `${m.awayTeam} Win` :
-                found.prediction === 'DRAW' ? 'Draw' : 'No Value Bet';
-
-          toast({
-            title: '✅ Prediction Ready',
-            description: `${m.homeTeam} vs ${m.awayTeam}: ${label}${confidencePct != null ? ` at ${confidencePct}% confidence` : ''
-              }.`,
-          });
+          applyResult(found.prediction ?? null, confidencePct, edgeVal, found.predictionId);
           return;
         }
       } catch (err) {
@@ -360,7 +449,7 @@ export default function MatchesPage() {
           <div>
             <h1 className="text-3xl font-bold text-foreground">All Analyzed Matches</h1>
             <p className="text-muted-foreground mt-1 text-balance">
-              Upcoming fixtures for the next {DAYS_AHEAD} days. Predictions persist on each card.
+              All upcoming fixtures from the backend. Predictions persist on each card after analysis.
             </p>
           </div>
 
@@ -374,8 +463,8 @@ export default function MatchesPage() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${filter === f
-                  ? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(53,208,127,0.3)]'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-white/10'
+                    ? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(53,208,127,0.3)]'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-white/10'
                   }`}
               >
                 {f}
@@ -414,8 +503,7 @@ export default function MatchesPage() {
             </div>
             <h3 className="text-2xl font-bold text-foreground mb-3">No upcoming matches</h3>
             <p className="text-muted-foreground max-w-md mx-auto">
-              No fixtures found for {filter === 'All' ? 'any supported league' : filter} in the
-              next {DAYS_AHEAD} days.
+              No fixtures currently available for {filter === 'All' ? 'any supported league' : filter}.
             </p>
           </div>
 

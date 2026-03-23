@@ -1,73 +1,64 @@
-# Welcome to your Lovable project 
+# BetOracle: AI Football Intelligence
 
-## Project info
+BetOracle is a state-of-the-art football prediction platform that combines advanced AI analysis with blockchain transparency. Unlike traditional tipster services, every prediction made by BetOracle is recorded and verified on the Celo blockchain, ensuring 100% transparency and unalterable track records.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Core Features
 
-## How can I edit this code?
+- **AI-Driven Insights**: Our proprietary model analyzes vast amounts of data including team form, Head-to-Head (H2H) records, player injuries, and league standings.
+- **Value Bet Detection**: We don't just predict winners; we identify "Value Bets" where our AI detects an edge of >8% over market odds.
+- **On-Chain Verification**: Every prediction and its subsequent result is anchored to the Celo blockchain, providing a verifiable and tamper-proof history of performance.
+- **Tiered Access System**: Users can access different levels of intelligence (Bronze, Silver, Gold) based on their subscription tier, unlocking deeper insights and more exclusive picks.
+- **Real-Time Match Tracking**: Stay updated with upcoming fixtures and live results across major European leagues (EPL, LaLiga, Bundesliga, SerieA, Ligue 1).
+- **Interactive Dashboards**: Comprehensive stats and performance tracking to help you understand the model's accuracy and historical success.
 
-There are several ways of editing your application.
+## Technical Architecture
 
-**Use Lovable**
+BetOracle is built with a modern, high-performance tech stack designed for speed, security, and scalability:
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- **Frontend**: [React](https://reactjs.org/) + [Vite](https://vitejs.dev/) + [TypeScript](https://www.typescriptlang.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)
+- **Blockchain**: [Thirdweb SDK](https://thirdweb.com/) + [Celo Network](https://celo.org/)
+- **State Management**: [Zustand](https://docs.pmnd.rs/zustand/) + [TanStack Query](https://tanstack.com/query/latest)
+- **Animations**: [Framer Motion](https://www.framer.com/motion/)
+- **Data Visualization**: [Recharts](https://recharts.org/)
 
-Changes made via Lovable will be committed automatically to this repo.
+## Getting Started
 
-**Use your preferred IDE**
+### Prerequisites
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- Node.js (v18 or later)
+- npm or bun
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Local Development
 
-Follow these steps:
+1. **Clone the repository**:
+   ```sh
+   git clone <repository-url>
+   cd footyracle
+   ```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+2. **Install dependencies**:
+   ```sh
+   npm install
+   ```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+3. **Set up environment variables**:
+   Create a `.env` file in the root directory and add the necessary configuration (API keys, Thirdweb Client ID, etc.).
 
-# Step 3: Install the necessary dependencies.
-npm i
+4. **Start the development server**:
+   ```sh
+   npm run dev
+   ```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+5. **Build for production**:
+   ```sh
+   npm run build
+   ```
 
-**Edit a file directly in GitHub**
+## License
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Built with ❤️ for football fans and data enthusiasts.

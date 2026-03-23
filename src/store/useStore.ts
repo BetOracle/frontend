@@ -25,7 +25,7 @@ export function cachePredictionTx(predictionId: string, txHash: string) {
 const ALL_SUPPORTED_LEAGUES = ['EPL', 'LaLiga', 'Bundesliga', 'Ligue1', 'SerieA'];
 
 // Days ahead to fetch for the team-name fixture lookup
-const FIXTURE_DAYS_AHEAD = 14;
+const FIXTURE_DAYS_AHEAD = 60;
 
 function inferLeagueFromMatchId(matchId: string): string | null {
   const idx = matchId.indexOf('-');
@@ -265,6 +265,7 @@ interface AppState {
   agentStatus: AgentStatus | null;
 
   isLoading: boolean;
+  predictionsReady: boolean; // true only after first successful fetchPredictions
   error: string | null;
   selectedPrediction: Prediction | null;
 
@@ -302,6 +303,7 @@ export const useStore = create<AppState>()(
       agentStatus: null,
 
       isLoading: false,
+      predictionsReady: false,
       error: null,
       selectedPrediction: null,
 
@@ -334,6 +336,7 @@ export const useStore = create<AppState>()(
             upcomingPredictions: upcoming,
             historicalPredictions: historical,
             isLoading: false,
+            predictionsReady: true,
             lastUpdated: new Date(),
             hasNewPicks: false,
             stagedUpcoming: [],

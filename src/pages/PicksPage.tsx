@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/store/useStore';
 import { PredictionCard } from '@/components/PredictionCard';
 import { PredictionDetailModal } from '@/components/PredictionDetailModal';
-import { Zap, Cpu } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { Prediction } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConnectButton, useActiveAccount } from 'thirdweb/react';
@@ -35,6 +35,7 @@ export default function PicksPage() {
   const {
     upcomingPredictions,
     isLoading,
+    predictionsReady,
     fetchPredictions,
     fetchStats,
     fetchAgentStatus,
@@ -45,14 +46,12 @@ export default function PicksPage() {
   const account = useActiveAccount();
 
   useEffect(() => {
-    fetchPredictions(); // fetches all pages + warms team names
+    fetchPredictions();
     fetchStats();
     fetchAgentStatus();
   }, [fetchPredictions, fetchStats, fetchAgentStatus]);
 
-  // Smart picks = unresolved predictions with a concrete outcome (value bet found).
-  // Team names come fully resolved from the store via warmMatchMetaForPredictions.
-  // Sorted soonest kickoff first.
+  // Smart picks = unresolved value bets with a concrete outcome, sorted by kickoff
   const smartPicks = upcomingPredictions
     .filter(p =>
       (!p.result || p.result.status === 'pending') &&
@@ -63,6 +62,12 @@ export default function PicksPage() {
       new Date(a.match.kickoffTime).getTime() - new Date(b.match.kickoffTime).getTime()
     );
 
+  // Show skeletons if:
+  //   - actively loading, OR
+  //   - predictions haven't loaded even once yet (avoids the initial empty flash)
+  const showSkeletons = isLoading || !predictionsReady;
+
+  // ── Unauthenticated wall ──────────────────────────────────────────────────
   if (!account?.address) {
     return (
       <div className="container mx-auto px-4 py-20">
@@ -98,10 +103,14 @@ export default function PicksPage() {
     );
   }
 
+  // ── Main content ──────────────────────────────────────────────────────────
   return (
     <div className="container mx-auto px-4 py-8 md:py-12 min-h-screen">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
-
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-6"
+      >
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <div>
@@ -110,7 +119,8 @@ export default function PicksPage() {
               Matches where our AI found the market underpricing a team
             </p>
           </div>
-          {!isLoading && smartPicks.length > 0 && (
+          {/* Only show count badge once data is ready and we actually have picks */}
+          {predictionsReady && !isLoading && smartPicks.length > 0 && (
             <div className="px-4 py-1.5 rounded-full bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 text-sm font-bold flex items-center gap-2 shrink-0">
               <Zap size={14} className="fill-emerald-400" />
               {smartPicks.length} pick{smartPicks.length !== 1 ? 's' : ''} today
@@ -118,10 +128,13 @@ export default function PicksPage() {
           )}
         </div>
 
-        {isLoading ? (
+        {/* Loading skeletons — shown until first successful fetch completes */}
+        {showSkeletons ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map(i => <PredictionSkeleton key={i} />)}
           </div>
+
+          /* No picks — only shown after data is fully loaded */
         ) : smartPicks.length === 0 ? (
           <div className="py-24 text-center glass-card rounded-2xl border-white/10 flex flex-col items-center justify-center relative overflow-hidden">
             <div className="absolute inset-0 pointer-events-none opacity-5 flex items-center justify-center">
@@ -142,6 +155,8 @@ export default function PicksPage() {
               "We'd rather say nothing than give you a bad tip."
             </p>
           </div>
+
+          /* Picks grid */
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <AnimatePresence>
