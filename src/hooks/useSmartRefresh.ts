@@ -22,8 +22,8 @@ export function useSmartRefresh() {
       }
     };
 
-    // 15 minutes = 900000 ms
-    const intervalId = setInterval(tick, 900000);
+    // 6 hours = 21600000 ms (Reduced from 15m to better match user requirement for ~4x daily refresh)
+    const intervalId = setInterval(tick, 21600000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {

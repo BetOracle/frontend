@@ -132,7 +132,7 @@ export function PredictionDetailModal({ prediction, open, onClose }: PredictionD
                 </p>
                 <div className="flex items-baseline gap-3">
                   <p className={cn("text-3xl font-bold flex items-center gap-2", hasEdge ? getOutcomeColor(pred.outcome) : 'text-muted-foreground')}>
-                    {hasEdge ? outcomeLabel[pred.outcome!] : 'Fairly Priced'}
+                    {hasEdge ? `Outcome: ${outcomeLabel[pred.outcome!]}` : 'Fairly Priced'}
                   </p>
                 </div>
               </div>
@@ -187,7 +187,7 @@ export function PredictionDetailModal({ prediction, open, onClose }: PredictionD
 
                   {/* Our model */}
                   <div className="grid grid-cols-4 gap-4 py-2">
-                    <div className="col-span-1 text-muted-foreground">What We Think</div>
+                    <div className="col-span-1 text-muted-foreground">Our Model Prediction</div>
                     {compData.map(d => (
                        <div key={d.label + '_model'} className="col-span-1 text-center text-foreground font-bold">
                          {d.model}%

@@ -144,7 +144,7 @@ export function PredictionCard({ prediction, onViewDetails }: PredictionCardProp
         {hasEdge ? (
           <div className="space-y-4 mb-4">
             <h3 className="text-xl font-bold text-foreground">
-              We think: {pred.outcome ? outcomeLabel[pred.outcome] : 'N/A'}
+              Our Prediction: {pred.outcome ? `Outcome: ${outcomeLabel[pred.outcome]}` : 'N/A'}
             </h3>
             
             {isPremium ? (

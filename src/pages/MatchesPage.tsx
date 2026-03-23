@@ -448,9 +448,6 @@ export default function MatchesPage() {
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">All Analyzed Matches</h1>
-            <p className="text-muted-foreground mt-1 text-balance">
-              All upcoming fixtures from the backend. Predictions persist on each card after analysis.
-            </p>
           </div>
 
           {/* League filter pills */}
@@ -463,8 +460,8 @@ export default function MatchesPage() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${filter === f
-                    ? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(53,208,127,0.3)]'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-white/10'
+                  ? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(53,208,127,0.3)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-white/10'
                   }`}
               >
                 {f}
