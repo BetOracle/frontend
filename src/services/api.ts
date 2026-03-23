@@ -47,13 +47,12 @@ const API_BASE_URL =
 
 const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
 
-// General requests (health, matches, predictions list, stats etc.) — 30s is plenty
-const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 30_000);
+// Railway free-tier cold-starts can take 30-50s.
+// All regular requests (matches, predictions, stats) use 60s so they survive cold-starts.
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 60_000);
 
-// POST /api/predict: Railway hard-drops connections at ~30s but the backend
-// keeps running. We fire-and-forget this request from the UI and poll for the
-// result separately, so we just need enough time to catch a fast response.
-// 28s gives a 2s buffer before Railway's cutoff.
+// POST /api/predict runs an AI pipeline that Railway drops at ~30s.
+// We fire-and-forget this and poll for the result, so 28s is enough.
 const PREDICT_TIMEOUT_MS = 28_000;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -63,9 +62,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const res = await fetch(url, {
     ...init,
-    // Callers can supply their own signal (predict endpoints do this).
-    // If they do, we use theirs and the local timeout above just gets
-    // cleared harmlessly via finally.
     signal: init?.signal ?? controller.signal,
     headers: {
       "Content-Type": "application/json",
@@ -144,9 +140,7 @@ export async function fetchSinglePrediction(
 
 /**
  * POST /api/predict — frontend-triggered.
- *
- * Uses a dedicated 28s abort controller so the global REQUEST_TIMEOUT_MS
- * (used by polling fetches) is not involved here.
+ * Uses its own 28s abort so it doesn't interfere with the 60s general timeout.
  */
 export async function createPrediction(data: {
   homeTeam: string;
@@ -179,7 +173,6 @@ export async function createPrediction(data: {
 
 /**
  * POST /api/predict — agent / precomputed.
- * Same 28s abort treatment as createPrediction.
  */
 export async function createPrecomputedPrediction(data: {
   matchId: string;

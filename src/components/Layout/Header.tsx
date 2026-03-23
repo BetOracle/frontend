@@ -110,7 +110,7 @@ export function Header() {
              ))}
            </nav>
            
-           {walletConnected && activeTier !== 'GOLD' && (
+           {walletConnected && activeTier !== 'gold' && (
               <Button variant="outline" className="w-full border-primary/50 text-primary hover:bg-primary/10" onClick={() => {setPaymentOpen(true); setMobileOpen(false);}}>
                  <Zap size={16} className="mr-2" /> Upgrade Tier
               </Button>

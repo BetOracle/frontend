@@ -24,116 +24,57 @@ export function cachePredictionTx(predictionId: string, txHash: string) {
 
 const ALL_SUPPORTED_LEAGUES = ['EPL', 'LaLiga', 'Bundesliga', 'Ligue1', 'SerieA'];
 
+// Days ahead to fetch for the team-name fixture lookup
+const FIXTURE_DAYS_AHEAD = 14;
+
 function inferLeagueFromMatchId(matchId: string): string | null {
   const idx = matchId.indexOf('-');
   if (idx <= 0) return null;
   return matchId.slice(0, idx);
 }
 
-/**
- * Parse matchId into its components.
- *
- * FORMAT A (new — has numeric fixtureId):
- *   EPL-538093-TOT-NOT-2026-03-22
- *   → { format:'A', fixtureId:'538093', homeAbbr:'TOT', awayAbbr:'NOT' }
- *
- * FORMAT B (old — no fixtureId):
- *   EPL-BRI-LIV-2026-03-21
- *   SerieA-COM-PIS-2026-03-22
- *   → { format:'B', homeAbbr:'BRI', awayAbbr:'LIV' }
- *
- * FORMAT C (bare fixture id):
- *   EPL-538093
- *   → { format:'C', fixtureId:'538093' }
- */
-type ParsedMatchId =
-  | { format: 'A'; fixtureId: string; homeAbbr: string; awayAbbr: string }
-  | { format: 'B'; homeAbbr: string; awayAbbr: string }
-  | { format: 'C'; fixtureId: string }
-  | { format: 'unknown' };
-
-function parseMatchId(matchId: string): ParsedMatchId {
+function extractFixtureId(matchId: string): string | null {
   const parts = matchId.split('-');
-  // parts[0] = league
-
-  // FORMAT A: league-fixtureId(numeric)-homeAbbr-awayAbbr-YYYY-MM-DD  (7 parts)
-  if (parts.length >= 7 && /^\d+$/.test(parts[1])) {
-    return { format: 'A', fixtureId: parts[1], homeAbbr: parts[2].toUpperCase(), awayAbbr: parts[3].toUpperCase() };
-  }
-
-  // FORMAT B: league-homeAbbr-awayAbbr-YYYY-MM-DD  (6 parts, parts[3] is year)
-  if (parts.length >= 6 && /^\d{4}$/.test(parts[3])) {
-    return { format: 'B', homeAbbr: parts[1].toUpperCase(), awayAbbr: parts[2].toUpperCase() };
-  }
-
-  // FORMAT C: league-fixtureId  (2 parts)
-  if (parts.length === 2 && /^\d+$/.test(parts[1])) {
-    return { format: 'C', fixtureId: parts[1] };
-  }
-
-  return { format: 'unknown' };
+  // Format A: league-fixtureId-... where parts[1] is numeric
+  if (parts.length >= 2 && /^\d+$/.test(parts[1])) return parts[1];
+  return null;
 }
 
 /**
- * Generate every abbreviation variant we might try matching against a team name.
+ * Extract team names from a prediction using ALL available sources, in priority order:
  *
- * The backend uses API-Football's short names to generate abbreviations.
- * We don't know the exact algorithm, so we try multiple strategies:
- *   1. First N chars of full name (uppercased)           NAN → "Nantes"
- *   2. First N chars of each word (initials style)       PSG → "Paris Saint-Germain"
- *   3. First N chars of last word                        LIV → "Liverpool" (also catches short names)
- *   4. Consonants / common nickname patterns             ATA → "Atalanta"
- *
- * Returns true if ANY strategy matches the given abbreviation.
+ * 1. factors.homeTeam / factors.awayTeam  ← API docs confirm these are stored here
+ * 2. prediction.homeTeam / prediction.awayTeam  ← top-level fields (newer predictions)
+ * 3. matchMetaCache  ← warmed from GET /api/matches fixture list
+ * 4. null  ← caller will fall back to abbreviations from matchId
  */
-function teamMatchesAbbr(fullName: string, abbr: string): boolean {
-  const a = abbr.toUpperCase();
-  const len = a.length; // usually 3, sometimes 2-4
-  const n = fullName.toUpperCase();
-
-  // Strategy 1: first N chars of full name
-  if (n.slice(0, len) === a) return true;
-
-  // Strategy 2: first char of each word (up to len words)
-  const words = fullName.replace(/[^a-zA-Z ]/g, ' ').split(/\s+/).filter(Boolean);
-  const initials = words.map(w => w[0].toUpperCase()).join('');
-  if (initials.startsWith(a) || initials === a) return true;
-
-  // Strategy 3: first N chars of the last word
-  const lastName = words[words.length - 1]?.toUpperCase() ?? '';
-  if (lastName.slice(0, len) === a) return true;
-
-  // Strategy 4: first N chars of each word concatenated
-  const wordConcat = words.map(w => w.toUpperCase()).join('');
-  if (wordConcat.slice(0, len) === a) return true;
-
-  // Strategy 5: check if abbr appears as a substring in any single word
-  // (catches e.g. "ATA" in "ATAlanta", "HEL" in "HELlas")
-  for (const word of words) {
-    if (word.toUpperCase().startsWith(a)) return true;
+function extractTeamNames(p: ApiPrediction): { homeTeam: string | null; awayTeam: string | null } {
+  // Priority 1: factors object (most reliable for stored predictions)
+  const factorsHome = p.factors?.homeTeam;
+  const factorsAway = p.factors?.awayTeam;
+  if (typeof factorsHome === 'string' && typeof factorsAway === 'string' && factorsHome && factorsAway) {
+    return { homeTeam: factorsHome, awayTeam: factorsAway };
   }
 
-  // Strategy 6: remove common suffixes (FC, CF, SC, AC, AS, SS, SSD, 1., etc)
-  //             and retry strategy 1 on the cleaned name
-  const cleaned = fullName
-    .replace(/\b(FC|CF|SC|AC|AS|SS|SSD|SPA|SAD|1\.|BV|VfL|VfB|TSG|RB|FSV|SV|FK|SK|NK)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toUpperCase();
-  if (cleaned.slice(0, len) === a) return true;
+  // Priority 2: top-level fields (newer predictions from updated backend)
+  if (p.homeTeam && p.awayTeam) {
+    return { homeTeam: p.homeTeam, awayTeam: p.awayTeam };
+  }
 
-  const cleanedWords = cleaned.split(/\s+/).filter(Boolean);
-  const cleanedInitials = cleanedWords.map(w => w[0]).join('');
-  if (cleanedInitials.startsWith(a) || cleanedInitials === a) return true;
+  // Priority 3: cache warmed from fixture endpoint
+  const cached = matchMetaCache.get(p.matchId);
+  if (cached) {
+    return { homeTeam: cached.homeTeam, awayTeam: cached.awayTeam };
+  }
 
-  return false;
+  return { homeTeam: null, awayTeam: null };
 }
 
 /**
  * Fetch ALL pages of predictions for a given resolved state.
  */
-async function fetchAllPredictions(resolved: boolean): Promise<api.ApiPrediction[]> {
-  const all: api.ApiPrediction[] = [];
+async function fetchAllPredictions(resolved: boolean): Promise<ApiPrediction[]> {
+  const all: ApiPrediction[] = [];
   let page = 1;
   const limit = 100;
 
@@ -148,132 +89,46 @@ async function fetchAllPredictions(resolved: boolean): Promise<api.ApiPrediction
 }
 
 /**
- * Build a comprehensive team lookup from all fixture data.
+ * Warm the matchMetaCache from upcoming fixtures.
+ * This gives us full team names indexed by {league}-{fixtureId} and
+ * also by the full matchId (Format A) so both lookup paths hit.
  *
- * Returns:
- *   fixtureIdMap:   fixtureId  → MatchMeta
- *   leagueTeams:    league     → array of { homeTeam, awayTeam, kickoffTime, meta }
- *
- * leagueTeams is used for abbr-based matching (Format B).
+ * This is a secondary source — factors.homeTeam/awayTeam is primary.
  */
-async function buildFixtureLookups(): Promise<{
-  fixtureIdMap: Map<string, MatchMeta>;
-  leagueTeams: Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>;
-}> {
-  const fixtureIdMap = new Map<string, MatchMeta>();
-  const leagueTeams = new Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>();
+async function warmFixtureCache(predictions: ApiPrediction[]): Promise<void> {
+  // Collect leagues present in predictions
+  const leagues = new Set<string>();
+  for (const p of predictions) {
+    const league = inferLeagueFromMatchId(p.matchId);
+    if (league) leagues.add(league);
+  }
+  // Always include all supported leagues so the cache is complete
+  ALL_SUPPORTED_LEAGUES.forEach(l => leagues.add(l));
 
   await Promise.allSettled(
-    ALL_SUPPORTED_LEAGUES.map(async (league) => {
+    Array.from(leagues).map(async (league) => {
       try {
-        const res = await api.fetchMatches(league, 60);
-        const teams: Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }> = [];
-
-        res.matches.forEach((m) => {
+        const res = await api.fetchMatches(league, FIXTURE_DAYS_AHEAD);
+        res.matches.forEach(m => {
           const kickoffTime = new Date(`${m.date}T${m.time}:00Z`).toISOString();
           const meta: MatchMeta = { homeTeam: m.homeTeam, awayTeam: m.awayTeam, kickoffTime, league };
-          fixtureIdMap.set(String(m.fixtureId), meta);
-          teams.push({ homeTeam: m.homeTeam, awayTeam: m.awayTeam, kickoffTime, league });
-        });
 
-        leagueTeams.set(league, teams);
+          // Cache by bare fixture key: EPL-538093
+          cacheMatchMeta(`${league}-${m.fixtureId}`, meta);
+
+          // Also try to match against any prediction matchId that starts with this prefix
+          // so Format A keys (EPL-538093-TOT-NOT-...) also hit the cache
+          for (const p of predictions) {
+            if (p.matchId.startsWith(`${league}-${m.fixtureId}-`) && !matchMetaCache.has(p.matchId)) {
+              cacheMatchMeta(p.matchId, meta);
+            }
+          }
+        });
       } catch {
-        leagueTeams.set(league, []);
+        // league not supported or backend down — skip silently
       }
     })
   );
-
-  return { fixtureIdMap, leagueTeams };
-}
-
-/**
- * Try to find a fixture match for a Format B prediction using abbr matching.
- * We try every fixture in the league and check if both team abbrs match.
- */
-function findByAbbrPair(
-  homeAbbr: string,
-  awayAbbr: string,
-  league: string,
-  leagueTeams: Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>
-): MatchMeta | null {
-  const fixtures = leagueTeams.get(league) ?? [];
-
-  for (const f of fixtures) {
-    if (teamMatchesAbbr(f.homeTeam, homeAbbr) && teamMatchesAbbr(f.awayTeam, awayAbbr)) {
-      return { homeTeam: f.homeTeam, awayTeam: f.awayTeam, kickoffTime: f.kickoffTime, league };
-    }
-  }
-  return null;
-}
-
-/**
- * Enrich predictions with full homeTeam / awayTeam names.
- *
- * Pipeline:
- *   1. Backend already has names → use directly
- *   2. Format A/C → look up by fixtureId in fixture map
- *   3. Format B   → match abbr pair against all fixtures in the league
- *   4. Anything still missing → use the raw abbr (never show date fragments or TBD)
- *
- * Note: fetchSinglePrediction is NOT used — confirmed from console logs that
- * the backend returns { homeTeam: undefined, awayTeam: undefined } for all
- * stored predictions. Team names are only available from the fixtures endpoint.
- */
-async function enrichPredictions(
-  predictions: api.ApiPrediction[],
-  fixtureIdMap: Map<string, MatchMeta>,
-  leagueTeams: Map<string, Array<{ homeTeam: string; awayTeam: string; kickoffTime: string; league: string }>>
-): Promise<api.ApiPrediction[]> {
-  const enriched: api.ApiPrediction[] = [];
-
-  for (const p of predictions) {
-    // Stage 1: backend already has names
-    if (p.homeTeam && p.awayTeam) {
-      enriched.push(p);
-      const league = inferLeagueFromMatchId(p.matchId) ?? 'Unknown';
-      cacheMatchMeta(p.matchId, {
-        homeTeam: p.homeTeam, awayTeam: p.awayTeam,
-        kickoffTime: new Date(p.timestamp * 1000).toISOString(), league,
-      });
-      continue;
-    }
-
-    const parsed = parseMatchId(p.matchId);
-    const league = inferLeagueFromMatchId(p.matchId) ?? 'Unknown';
-
-    // Stage 2: Format A or C — lookup by fixtureId
-    if ((parsed.format === 'A' || parsed.format === 'C')) {
-      const meta = fixtureIdMap.get(parsed.fixtureId);
-      if (meta) {
-        enriched.push({ ...p, homeTeam: meta.homeTeam, awayTeam: meta.awayTeam });
-        cacheMatchMeta(p.matchId, meta);
-        continue;
-      }
-    }
-
-    // Stage 3: Format A or B — match by abbr pair across all fixtures in league
-    if (parsed.format === 'A' || parsed.format === 'B') {
-      const { homeAbbr, awayAbbr } = parsed as { homeAbbr: string; awayAbbr: string };
-      const meta = findByAbbrPair(homeAbbr, awayAbbr, league, leagueTeams);
-      if (meta) {
-        enriched.push({ ...p, homeTeam: meta.homeTeam, awayTeam: meta.awayTeam });
-        cacheMatchMeta(p.matchId, meta);
-        continue;
-      }
-
-      // Stage 4: abbr match failed — use the raw abbreviations (correct and readable,
-      // just not full names). NEVER fall back to date fragments like "2026".
-      console.warn(`[enrichPredictions] abbr match failed for ${p.matchId} (${homeAbbr} vs ${awayAbbr}) — using abbrs`);
-      enriched.push({ ...p, homeTeam: homeAbbr, awayTeam: awayAbbr });
-      continue;
-    }
-
-    // Stage 4: Format C fixtureId not in upcoming + Format unknown
-    // Use whatever we have — raw abbrs if available, otherwise TBD
-    enriched.push(p);
-  }
-
-  return enriched;
 }
 
 // ---------- mapping ----------
@@ -288,18 +143,37 @@ function mapOutcome(raw: string | null): PredictionOutcome | undefined {
   }
 }
 
-function apiToFrontend(p: api.ApiPrediction): Prediction {
+function apiToFrontend(p: ApiPrediction): Prediction {
   const outcome = mapOutcome(p.prediction);
   const hasValueBet = p.prediction !== null;
   const confidence = Math.round(p.confidence <= 1 ? p.confidence * 100 : p.confidence);
   const league = inferLeagueFromMatchId(p.matchId) ?? 'Unknown';
-  const meta = matchMetaCache.get(p.matchId);
-
-  const homeTeam = p.homeTeam ?? meta?.homeTeam ?? 'TBD';
-  const awayTeam = p.awayTeam ?? meta?.awayTeam ?? 'TBD';
-
-  const resultStatus = p.resolved ? (p.correct ? 'win' : 'loss') : 'pending';
   const edge = p.edge != null ? Math.round(p.edge * 10) / 10 : 0;
+
+  // Resolve team names using all available sources
+  const { homeTeam: resolvedHome, awayTeam: resolvedAway } = extractTeamNames(p);
+
+  // Last resort: parse abbreviations from matchId (avoids "TBD" and date fragments)
+  const parts = p.matchId.split('-');
+  const homeAbbr = parts.length >= 3 && !/^\d+$/.test(parts[1]) ? parts[1] // Format B: league-HOME-AWAY-date
+    : parts.length >= 4 && /^\d+$/.test(parts[1]) ? parts[2] // Format A: league-fixtureId-HOME-AWAY-date
+      : null;
+  const awayAbbr = parts.length >= 3 && !/^\d+$/.test(parts[1]) ? parts[2]
+    : parts.length >= 4 && /^\d+$/.test(parts[1]) ? parts[3]
+      : null;
+
+  const homeTeam = resolvedHome ?? homeAbbr ?? 'TBD';
+  const awayTeam = resolvedAway ?? awayAbbr ?? 'TBD';
+
+  const meta = matchMetaCache.get(p.matchId);
+  const resultStatus = p.resolved ? (p.correct ? 'win' : 'loss') : 'pending';
+
+  // Kickoff time: prefer factors.time combined with factors.date, then cache, then timestamp
+  const factorsDate = p.factors?.date as string | undefined;
+  const factorsTime = p.factors?.time as string | undefined;
+  const kickoffTime = factorsDate && factorsTime
+    ? new Date(`${factorsDate}T${factorsTime}:00Z`).toISOString()
+    : meta?.kickoffTime ?? new Date(p.timestamp * 1000).toISOString();
 
   return {
     id: p.predictionId,
@@ -308,7 +182,7 @@ function apiToFrontend(p: api.ApiPrediction): Prediction {
       homeTeam,
       awayTeam,
       league: meta?.league ?? league,
-      kickoffTime: meta?.kickoffTime ?? new Date(p.timestamp * 1000).toISOString(),
+      kickoffTime,
     },
     prediction: {
       hasValueBet,
@@ -442,29 +316,19 @@ export const useStore = create<AppState>()(
       fetchPredictions: async () => {
         set({ isLoading: true, error: null });
         try {
-          // Fetch all pages + build fixture lookups in parallel
-          const [unresolvedRaw, resolvedRaw, lookups] = await Promise.all([
+          const [unresolvedRaw, resolvedRaw] = await Promise.all([
             fetchAllPredictions(false),
             fetchAllPredictions(true),
-            buildFixtureLookups(),
           ]);
 
-          const { fixtureIdMap, leagueTeams } = lookups;
+          const allRaw = [...unresolvedRaw, ...resolvedRaw];
 
-          console.log(`[store] fetched ${unresolvedRaw.length} unresolved, ${resolvedRaw.length} resolved`);
-          console.log('[store] fixtureIdMap size:', fixtureIdMap.size);
-          console.log('[store] sample matchIds:', [...unresolvedRaw, ...resolvedRaw].slice(0, 8).map(p => p.matchId));
+          // Warm fixture cache in parallel with mapping
+          // Most team names will come from factors — cache is a backup
+          await warmFixtureCache(allRaw);
 
-          const [enrichedUnresolved, enrichedResolved] = await Promise.all([
-            enrichPredictions(unresolvedRaw, fixtureIdMap, leagueTeams),
-            enrichPredictions(resolvedRaw, fixtureIdMap, leagueTeams),
-          ]);
-
-          const upcoming = enrichedUnresolved.map(apiToFrontend);
-          const historical = enrichedResolved.map(apiToFrontend);
-
-          console.log('[store] upcoming team names:', upcoming.slice(0, 8).map(p => `${p.match.homeTeam} vs ${p.match.awayTeam}`));
-          console.log('[store] historical team names:', historical.map(p => `${p.match.homeTeam} vs ${p.match.awayTeam}`));
+          const upcoming = unresolvedRaw.map(apiToFrontend);
+          const historical = resolvedRaw.map(apiToFrontend);
 
           set({
             upcomingPredictions: upcoming,
@@ -483,21 +347,15 @@ export const useStore = create<AppState>()(
 
       checkNewPicksBackground: async () => {
         try {
-          const [unresolvedRaw, resolvedRaw, lookups] = await Promise.all([
+          const [unresolvedRaw, resolvedRaw] = await Promise.all([
             fetchAllPredictions(false),
             fetchAllPredictions(true),
-            buildFixtureLookups(),
           ]);
 
-          const { fixtureIdMap, leagueTeams } = lookups;
+          await warmFixtureCache([...unresolvedRaw, ...resolvedRaw]);
 
-          const [enrichedUnresolved, enrichedResolved] = await Promise.all([
-            enrichPredictions(unresolvedRaw, fixtureIdMap, leagueTeams),
-            enrichPredictions(resolvedRaw, fixtureIdMap, leagueTeams),
-          ]);
-
-          const upcoming = enrichedUnresolved.map(apiToFrontend);
-          const historical = enrichedResolved.map(apiToFrontend);
+          const upcoming = unresolvedRaw.map(apiToFrontend);
+          const historical = resolvedRaw.map(apiToFrontend);
 
           const currentUpcomingIds = new Set(get().upcomingPredictions.map(p => p.id));
           const currentHistoricalIds = new Set(get().historicalPredictions.map(p => p.id));
@@ -573,7 +431,6 @@ export const useStore = create<AppState>()(
               isLoading: false,
             });
           } catch {
-            console.warn('[store] fetchStats failed completely');
             set({ stats: emptyStats, isLoading: false });
           }
         }

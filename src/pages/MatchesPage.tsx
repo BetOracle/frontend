@@ -11,14 +11,21 @@ import * as api from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { cacheMatchMeta, cachePredictionTx } from '@/store/useStore';
 
-// Must exactly match the league strings the backend uses in matchIds
-type FilterType = 'All' | 'EPL' | 'LaLiga' | 'Bundesliga' | 'Ligue1' | 'SerieA';
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const ALL_LEAGUES = ['EPL', 'LaLiga', 'Bundesliga', 'Ligue1', 'SerieA'] as const;
+type League = typeof ALL_LEAGUES[number];
+type FilterType = 'All' | League;
+
+// Fetch 14 days ahead so we always have a meaningful fixture list
+const DAYS_AHEAD = 14;
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 120_000;
 const POLL_INITIAL_DELAY_MS = 4_000;
 
-// ── Persistent card-level prediction store ───────────────────────────────────
+// ── Card-level persistent prediction store ────────────────────────────────────
+
 interface CardPrediction {
   outcome: string | null;
   confidence: number | null;
@@ -28,9 +35,9 @@ interface CardPrediction {
   predictionId?: string;
   txHash?: string;
 }
-
-// Module-level map — survives filter changes, cleared on page unmount
 const cardPredictionStore = new Map<number, CardPrediction>();
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function PredictionSkeleton() {
   return (
@@ -45,21 +52,16 @@ function PredictionSkeleton() {
   );
 }
 
-// ── Outcome badge ─────────────────────────────────────────────────────────────
 function OutcomeBadge({ outcome, homeTeam, awayTeam }: {
-  outcome: string | null;
-  homeTeam: string;
-  awayTeam: string;
+  outcome: string | null; homeTeam: string; awayTeam: string;
 }) {
   if (!outcome) {
     return (
       <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-semibold">
-        <Ban size={13} />
-        No Value Bet
+        <Ban size={13} /> No Value Bet
       </div>
     );
   }
-
   const cfg = {
     HOME_WIN: { label: `${homeTeam} Win`, icon: <TrendingUp size={13} />, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
     DRAW: { label: 'Draw', icon: <Minus size={13} />, color: 'text-amber-400', bg: 'bg-amber-400/10   border-amber-400/20' },
@@ -73,11 +75,8 @@ function OutcomeBadge({ outcome, homeTeam, awayTeam }: {
   );
 }
 
-// ── Full prediction result panel inside the card ──────────────────────────────
 function PredictionResult({ pred, homeTeam, awayTeam }: {
-  pred: CardPrediction;
-  homeTeam: string;
-  awayTeam: string;
+  pred: CardPrediction; homeTeam: string; awayTeam: string;
 }) {
   return (
     <motion.div
@@ -86,7 +85,6 @@ function PredictionResult({ pred, homeTeam, awayTeam }: {
       transition={{ duration: 0.35, ease: 'easeOut' }}
       className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3"
     >
-      {/* Top row: outcome + on-chain link */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <OutcomeBadge outcome={pred.outcome} homeTeam={homeTeam} awayTeam={awayTeam} />
         {pred.txHash && (
@@ -100,8 +98,6 @@ function PredictionResult({ pred, homeTeam, awayTeam }: {
           </a>
         )}
       </div>
-
-      {/* Confidence bar + edge */}
       {pred.outcome && (
         <div className="flex items-end gap-4">
           {pred.confidence != null && (
@@ -132,48 +128,58 @@ function PredictionResult({ pred, homeTeam, awayTeam }: {
   );
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function MatchesPage() {
   const { fetchPredictions } = useStore();
-  const [filter, setFilter] = useState<FilterType>('All');
   const account = useActiveAccount();
 
-  const [matchesLoading, setMatchesLoading] = useState(false);
-  const [matchesError, setMatchesError] = useState<string | null>(null);
-  const [matches, setMatches] = useState<Array<api.ApiMatch & { _league: string }>>([]);
+  const [filter, setFilter] = useState<FilterType>('All');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [matches, setMatches] = useState<Array<api.ApiMatch & { _league: League }>>([]);
   const [analyzingFor, setAnalyzingFor] = useState<Set<number>>(new Set());
   const [predictionVersion, setPredictionVersion] = useState(0);
-  const bumpVersion = () => setPredictionVersion(v => v + 1);
 
+  const bumpVersion = () => setPredictionVersion(v => v + 1);
   const addAnalyzing = (id: number) => setAnalyzingFor(prev => new Set(prev).add(id));
   const removeAnalyzing = (id: number) => setAnalyzingFor(prev => { const s = new Set(prev); s.delete(id); return s; });
 
-  // All leagues we support — must match backend matchId prefixes exactly
-  const ALL_LEAGUES: FilterType[] = ['EPL', 'LaLiga', 'Bundesliga', 'Ligue1', 'SerieA'];
   const filters: FilterType[] = ['All', ...ALL_LEAGUES];
 
-  // ── Fetch fixtures ────────────────────────────────────────────────────────
+  // ── Fetch matches ──────────────────────────────────────────────────────────
   useEffect(() => {
-    const run = async () => {
-      setMatchesLoading(true);
-      setMatchesError(null);
-      try {
-        // When filter is 'All' fetch every league in parallel.
-        // When a specific league is selected, fetch only that one.
-        const leaguesToFetch = filter === 'All' ? ALL_LEAGUES : [filter];
+    let cancelled = false;
 
-        const results = await Promise.all(
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+
+      // Which leagues to fetch
+      const leaguesToFetch: League[] =
+        filter === 'All' ? [...ALL_LEAGUES] : [filter as League];
+
+      try {
+        // Fetch all leagues in parallel, 14 days ahead
+        const responses = await Promise.all(
           leaguesToFetch.map(league =>
-            api.fetchMatches(league)
-              .then(res => ({ league, matches: res.matches ?? [] }))
-              .catch(() => ({ league, matches: [] as api.ApiMatch[] }))
+            api.fetchMatches(league, DAYS_AHEAD)
+              .then(res => ({ league, matches: res.matches ?? [], ok: true }))
+              .catch(err => {
+                console.warn(`[MatchesPage] ${league} failed:`, err?.message);
+                return { league, matches: [] as api.ApiMatch[], ok: false };
+              })
           )
         );
 
-        const allMatches: Array<api.ApiMatch & { _league: string }> = [];
-        results.forEach(({ league, matches }) => {
-          matches.forEach(m => {
+        if (cancelled) return;
+
+        const allMatches: Array<api.ApiMatch & { _league: League }> = [];
+
+        responses.forEach(({ league, matches: leagueMatches }) => {
+          leagueMatches.forEach(m => {
             allMatches.push({ ...m, _league: league });
-            // Pre-warm cache with the stable fixture-id key
+            // Pre-warm team name cache
             cacheMatchMeta(`${league}-${m.fixtureId}`, {
               homeTeam: m.homeTeam,
               awayTeam: m.awayTeam,
@@ -183,32 +189,39 @@ export default function MatchesPage() {
           });
         });
 
+        const allFailed = responses.every(r => !r.ok);
+        if (allFailed) {
+          setError('Could not reach the backend. Please try again in a moment.');
+        }
+
         setMatches(allMatches);
       } catch (e: any) {
-        setMatchesError(e?.message || 'Failed to fetch matches');
-        setMatches([]);
+        if (!cancelled) setError(e?.message ?? 'Failed to load matches');
       } finally {
-        setMatchesLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
+
     run();
+    return () => { cancelled = true; };
   }, [filter]);
 
   const visibleMatches = useMemo(
     () => [...matches].sort((a, b) =>
-      new Date(`${a.date}T${a.time}:00Z`).getTime() - new Date(`${b.date}T${b.time}:00Z`).getTime()
+      new Date(`${a.date}T${a.time}:00Z`).getTime() -
+      new Date(`${b.date}T${b.time}:00Z`).getTime()
     ),
     [matches]
   );
 
-  // ── Create prediction ─────────────────────────────────────────────────────
-  const handleCreatePrediction = (m: api.ApiMatch & { _league: string }) => {
+  // ── Create prediction ──────────────────────────────────────────────────────
+  const handleCreatePrediction = (m: api.ApiMatch & { _league: League }) => {
     const league = m._league;
-    if (!league || analyzingFor.has(m.fixtureId) || cardPredictionStore.has(m.fixtureId)) return;
+    if (analyzingFor.has(m.fixtureId) || cardPredictionStore.has(m.fixtureId)) return;
 
     addAnalyzing(m.fixtureId);
 
-    // Fire and forget — Railway drops at ~28s but backend keeps running
+    // Fire and forget — backend keeps running even after Railway drops connection
     api.createPrediction({
       homeTeam: m.homeTeam,
       awayTeam: m.awayTeam,
@@ -220,7 +233,6 @@ export default function MatchesPage() {
         if (res?.predictionId && res?.blockchain?.txHash) {
           cachePredictionTx(res.predictionId, res.blockchain.txHash);
         }
-        // Handle NO_VALUE_BET when backend responds within 28s
         if (res && !res.success && res.code === 'NO_VALUE_BET') {
           removeAnalyzing(m.fixtureId);
           cardPredictionStore.set(m.fixtureId, {
@@ -233,7 +245,7 @@ export default function MatchesPage() {
       })
       .catch((err: any) => {
         if (!err?.message?.includes('took too long')) {
-          console.warn('[MatchesPage] Unexpected predict error:', err?.message);
+          console.warn('[MatchesPage] predict error:', err?.message);
         }
       });
 
@@ -242,9 +254,7 @@ export default function MatchesPage() {
       description: `Analyzing ${m.homeTeam} vs ${m.awayTeam}. Result will appear on the card when ready.`,
     });
 
-    // ── Poll by prefix match ──────────────────────────────────────────────
-    // Backend matchId format: {league}-{fixtureId}-{homeAbbr}-{awayAbbr}-{date}
-    // Prefix match covers all variants.
+    // Poll until the prediction appears — backend matchId starts with {league}-{fixtureId}
     const matchIdPrefix = `${league}-${m.fixtureId}`;
     const started = Date.now();
     let pollCount = 0;
@@ -255,7 +265,7 @@ export default function MatchesPage() {
         removeAnalyzing(m.fixtureId);
         toast({
           title: 'Analysis Timed Out',
-          description: `Could not get result for ${m.homeTeam} vs ${m.awayTeam}. Try again or check the picks feed.`,
+          description: `Check the picks feed in a moment for ${m.homeTeam} vs ${m.awayTeam}.`,
           variant: 'destructive',
         });
         return;
@@ -266,6 +276,10 @@ export default function MatchesPage() {
         const found = res.predictions.find(p => p.matchId.startsWith(matchIdPrefix));
 
         if (found) {
+          // Extract team names from factors if available (API docs confirm they're stored there)
+          const factorsHome = found.factors?.homeTeam as string | undefined;
+          const factorsAway = found.factors?.awayTeam as string | undefined;
+
           const confidencePct = found.confidence != null
             ? Math.round(found.confidence <= 1 ? found.confidence * 100 : found.confidence)
             : null;
@@ -275,25 +289,23 @@ export default function MatchesPage() {
             outcome: found.prediction ?? null,
             confidence: confidencePct,
             edge: edgeVal,
-            homeTeam: m.homeTeam,
-            awayTeam: m.awayTeam,
+            homeTeam: factorsHome ?? m.homeTeam,
+            awayTeam: factorsAway ?? m.awayTeam,
             predictionId: found.predictionId,
-            txHash: found.predictionId ? predictionTxCacheGet(found.predictionId) : undefined,
           });
 
           removeAnalyzing(m.fixtureId);
           bumpVersion();
           await fetchPredictions();
 
-          const outcomeLabel =
+          const label =
             found.prediction === 'HOME_WIN' ? `${m.homeTeam} Win` :
               found.prediction === 'AWAY_WIN' ? `${m.awayTeam} Win` :
-                found.prediction === 'DRAW' ? 'Draw' :
-                  'No Value Bet';
+                found.prediction === 'DRAW' ? 'Draw' : 'No Value Bet';
 
           toast({
             title: '✅ Prediction Ready',
-            description: `${m.homeTeam} vs ${m.awayTeam}: ${outcomeLabel}${confidencePct != null ? ` at ${confidencePct}% confidence` : ''
+            description: `${m.homeTeam} vs ${m.awayTeam}: ${label}${confidencePct != null ? ` at ${confidencePct}% confidence` : ''
               }.`,
           });
           return;
@@ -308,51 +320,62 @@ export default function MatchesPage() {
     setTimeout(poll, POLL_INITIAL_DELAY_MS);
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Unauthenticated ────────────────────────────────────────────────────────
   if (!account?.address) {
     return (
       <div className="container mx-auto px-4 py-20">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md mx-auto text-center space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-md mx-auto text-center space-y-6"
+        >
           <div>
             <h1 className="text-3xl font-bold text-foreground">All Analyzed Matches</h1>
             <p className="text-muted-foreground mt-1 text-balance">
               Upcoming fixtures fetched in realtime. Create a prediction for any fixture.
             </p>
           </div>
-          <div className="flex justify-center">
-            <ConnectButton
-              client={thirdwebClient} chain={celoChain}
-              connectButton={{ className: 'gradient-primary text-black font-bold h-12 px-8 shadow-lg shadow-primary/20', label: 'Connect Wallet' }}
-            />
-          </div>
+          <ConnectButton
+            client={thirdwebClient} chain={celoChain}
+            connectButton={{
+              className: 'gradient-primary text-black font-bold h-12 px-8 shadow-lg shadow-primary/20',
+              label: 'Connect Wallet',
+            }}
+          />
         </motion.div>
       </div>
     );
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="container mx-auto px-4 py-8 md:py-12 min-h-screen">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
-
-        {/* ── Header ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-6"
+      >
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">All Analyzed Matches</h1>
             <p className="text-muted-foreground mt-1 text-balance">
-              Upcoming fixtures fetched in realtime. Predictions persist on each card after analysis.
+              Upcoming fixtures for the next {DAYS_AHEAD} days. Predictions persist on each card.
             </p>
           </div>
 
           {/* League filter pills */}
           <div className="flex items-center bg-white/5 border border-white/10 rounded-full p-1 overflow-x-auto max-w-full glass-card">
-            <div className="pl-3 pr-2 text-muted-foreground"><ListFilter size={16} /></div>
+            <div className="pl-3 pr-2 text-muted-foreground shrink-0">
+              <ListFilter size={16} />
+            </div>
             {filters.map(f => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${filter === f
-                    ? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(53,208,127,0.3)]'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-white/10'
+                  ? 'bg-primary text-primary-foreground font-bold shadow-[0_0_10px_rgba(53,208,127,0.3)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-white/10'
                   }`}
               >
                 {f}
@@ -361,56 +384,77 @@ export default function MatchesPage() {
           </div>
         </div>
 
-        {/* ── Content ── */}
-        {matchesLoading ? (
+        {/* Loading */}
+        {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map(i => <PredictionSkeleton key={i} />)}
           </div>
-        ) : matchesError ? (
+
+          /* Error */
+        ) : error && visibleMatches.length === 0 ? (
           <div className="py-24 text-center glass-card rounded-2xl border-white/10 flex flex-col items-center justify-center">
-            <h3 className="text-2xl font-bold text-foreground mb-3">Failed to load matches</h3>
-            <p className="text-muted-foreground max-w-md mx-auto">{matchesError}</p>
+            <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6 border border-white/10">
+              <span className="text-3xl">⚠️</span>
+            </div>
+            <h3 className="text-xl font-bold text-foreground mb-2">Could not load fixtures</h3>
+            <p className="text-muted-foreground max-w-md mx-auto mb-5 text-sm">{error}</p>
+            <Button
+              onClick={() => setFilter(f => f)}
+              className="gradient-primary text-black font-bold"
+            >
+              Try again
+            </Button>
           </div>
+
+          /* No matches */
         ) : visibleMatches.length === 0 ? (
           <div className="py-24 text-center glass-card rounded-2xl border-white/10 flex flex-col items-center justify-center">
             <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6 border border-white/10">
-              <span className="text-3xl">🔍</span>
+              <span className="text-3xl">📅</span>
             </div>
-            <h3 className="text-2xl font-bold text-foreground mb-3">No matches found</h3>
-            <p className="text-muted-foreground max-w-md mx-auto">No upcoming fixtures for this league right now.</p>
+            <h3 className="text-2xl font-bold text-foreground mb-3">No upcoming matches</h3>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              No fixtures found for {filter === 'All' ? 'any supported league' : filter} in the
+              next {DAYS_AHEAD} days.
+            </p>
           </div>
+
+          /* Grid */
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence>
+            <AnimatePresence mode="popLayout">
               {visibleMatches.map(m => {
                 const isAnalyzing = analyzingFor.has(m.fixtureId);
-                // eslint-disable-next-line react-hooks/exhaustive-deps
-                const cardPred = cardPredictionStore.get(m.fixtureId);
+                const cardPred = predictionVersion >= 0 ? cardPredictionStore.get(m.fixtureId) : undefined;
                 const hasPrediction = !!cardPred;
 
                 return (
                   <motion.div
-                    key={`${m.fixtureId}-${predictionVersion}`}
+                    key={m.fixtureId}
                     layout
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.3 }}
-                    className={`glass-card p-5 rounded-xl border space-y-3 transition-colors ${hasPrediction ? 'border-primary/20 bg-primary/[0.03]' : 'border-white/5'
+                    transition={{ duration: 0.25 }}
+                    className={`glass-card p-5 rounded-xl border space-y-3 transition-colors duration-300 ${hasPrediction ? 'border-primary/20 bg-primary/[0.03]' : 'border-white/5'
                       }`}
                   >
-                    {/* Header */}
+                    {/* Header row */}
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground font-mono">#{m.fixtureId}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-primary/70 uppercase tracking-wider">{m._league}</span>
+                        <span className="text-xs font-semibold text-primary/70 uppercase tracking-wider">
+                          {m._league}
+                        </span>
                         <span className="text-xs text-muted-foreground">{m.date} {m.time}</span>
                       </div>
                     </div>
 
-                    {/* Teams */}
+                    {/* Team names — full names from GET /api/matches */}
                     <div className="text-base font-bold text-foreground leading-snug">
-                      {m.homeTeam} <span className="text-muted-foreground font-normal text-sm">vs</span> {m.awayTeam}
+                      {m.homeTeam}{' '}
+                      <span className="text-muted-foreground font-normal text-sm">vs</span>{' '}
+                      {m.awayTeam}
                     </div>
 
                     {/* Analyzing progress bar */}
@@ -425,9 +469,13 @@ export default function MatchesPage() {
                       </div>
                     )}
 
-                    {/* Prediction result or CTA */}
+                    {/* Persistent result or CTA */}
                     {hasPrediction ? (
-                      <PredictionResult pred={cardPred!} homeTeam={m.homeTeam} awayTeam={m.awayTeam} />
+                      <PredictionResult
+                        pred={cardPred!}
+                        homeTeam={m.homeTeam}
+                        awayTeam={m.awayTeam}
+                      />
                     ) : (
                       <Button
                         className="w-full gradient-primary text-black font-bold"
@@ -446,12 +494,4 @@ export default function MatchesPage() {
       </motion.div>
     </div>
   );
-}
-
-// Helper: read from the module-level predictionTxCache (not exported from useStore)
-function predictionTxCacheGet(predictionId: string): string | undefined {
-  // We re-export cacheMatchMeta from useStore but not the tx cache getter.
-  // The tx hash will be populated by cachePredictionTx when the fire-and-forget
-  // response arrives, or can be read from the store's blockchainTx field.
-  return undefined;
 }
