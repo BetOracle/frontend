@@ -27,4 +27,16 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'thirdweb': ['thirdweb'],
+          'recharts': ['recharts'],
+          'vendor': ['react', 'react-dom', 'react-router-dom', 'framer-motion', 'lucide-react'],
+          'wallet': ['@rainbow-me/rainbowkit', 'viem', 'wagmi'],
+        },
+      },
+    },
+  },
 }));
